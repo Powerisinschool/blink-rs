@@ -3,5 +3,21 @@
 version = 4
 
 [[package]]
-name = "rust_blink"
+name = "blink_css"
+version = "0.1.0"
+
+[[package]]
+name = "blink_dom"
+version = "0.1.0"
+
+[[package]]
+name = "blink_html"
+version = "0.1.0"
+
+[[package]]
+name = "blink_shell"
+version = "0.1.0"
+
+[[package]]
+name = "xtask"
 version = "0.1.0"
