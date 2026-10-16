@@ -8,3 +8,4 @@ dense-core = []
 default = []
 
 [dependencies]
+markup5ever.workspace = true

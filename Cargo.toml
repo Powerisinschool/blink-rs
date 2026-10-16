@@ -3,3 +3,5 @@ resolver = "3"
 members = ["crates/*", "xtask", "blink_shell"]
 
 [workspace.dependencies]
+markup5ever = "0.40.0"
+html5ever = "0.40.1"

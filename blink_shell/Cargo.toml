@@ -4,3 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+blink_html = { path = "../crates/blink_html" }
+html5ever.workspace = true
+
+[features]
+dense-core = ["blink_html/dense-core"]
