@@ -71,7 +71,9 @@ enum NodeKind {
         tag: u8, // Easily fits the indices for the ~150 HTML tags
         first_child: Option<NonZeroU32>
     },
-    Text { text_id: u32 },
+    Text {
+        // text_id: u32
+    },
     EmptyLeaf {
         tag: u8, // Easily fits the indices for the ~150 HTML tags
     },
@@ -236,7 +238,9 @@ impl Dom {
         self.nodes.push(DomNode {
             parent: None,
             next_sibling: None,
-            kind: NodeKind::Text { text_id },
+            kind: NodeKind::Text {
+                // text_id
+            },
         });
         NonZeroU32::new((node_idx as u32) + 1).unwrap()
     }
