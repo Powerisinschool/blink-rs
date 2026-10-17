@@ -1,4 +1,4 @@
-use markup5ever::{QualName, ns};
+use markup5ever::{ns, Attribute, QualName};
 use std::collections::HashMap;
 use std::num::NonZeroU32;
 
@@ -39,33 +39,17 @@ pub fn get_tag_name(tag: u8) -> &'static str {
     }
 }
 
-// A more memory-efficient representation of the DOM
+
+
+// A proposed, more memory-efficient representation of the DOM
 #[cfg(feature = "dense-core")]
-struct ElementPayload {
-    tag: u8,
-    first_child: Option<NonZeroU32>,
-}
-
-#[cfg(feature = "dense-core")]
-pub struct Dom {
-    pub parents: Vec<Option<NonZeroU32>>,       // 4 bytes
-    pub next_siblings: Vec<Option<NonZeroU32>>, // 4 bytes
-    pub payload_keys: Vec<Option<NonZeroU32>>,  // 4 bytes (Bitmasked Type + Dense Index)
-
-    element_payloads: Vec<ElementPayload>,  // { tag: u8, first_child: Option<u32> }
-    pub text_payloads: Vec<Option<NonZeroU32>>, // plain text_ids
-    pub void_payloads: Vec<u8>,                 // plain tags for empty leaves
-    pub tag_registry: HashMap<u8, Box<QualName>>,
-}
-
-// Memory-safe, arena-allocated DOM
-#[cfg(not(feature = "dense-core"))]
 pub struct Dom {
     nodes: Vec<DomNode>,
+    pub node_attributes: Vec<Option<Box<[Attribute]>>>,
     pub tag_registry: HashMap<u8, Box<QualName>>,
 }
 
-#[cfg(not(feature = "dense-core"))]
+#[cfg(feature = "dense-core")]
 enum NodeKind {
     Element {
         tag: u8, // Easily fits the indices for the ~150 HTML tags
@@ -79,7 +63,28 @@ enum NodeKind {
     },
 }
 
+// Memory-safe, arena-allocated DOM
 #[cfg(not(feature = "dense-core"))]
+pub struct Dom {
+    nodes: Vec<DomNode>,
+    pub tag_registry: HashMap<u8, Box<QualName>>,
+}
+
+#[cfg(not(feature = "dense-core"))]
+enum NodeKind {
+    Element {
+        tag: u8, // Easily fits the indices for the ~150 HTML tags
+        first_child: Option<NonZeroU32>,
+        attrs: Option<Box<[Attribute]>>,
+    },
+    Text {
+        // text_id: u32
+    },
+    EmptyLeaf {
+        tag: u8, // Easily fits the indices for the ~150 HTML tags
+    },
+}
+
 struct DomNode {
     parent: Option<NonZeroU32>,
     next_sibling: Option<NonZeroU32>,
@@ -89,151 +94,47 @@ struct DomNode {
 // ---------------------------------------------------------
 // Unified API Implementation
 // ---------------------------------------------------------
-
-#[cfg(feature = "dense-core")]
 impl Dom {
-    pub fn new() -> Self {
-        Self {
-            parents: Vec::new(),
-            next_siblings: Vec::new(),
-            payload_keys: Vec::new(),
-            element_payloads: Vec::new(),
-            text_payloads: Vec::new(),
-            void_payloads: Vec::new(),
-            tag_registry: HashMap::new(),
-        }
-    }
+    // pub fn new() -> Self {
+    //     Self {
+    //         nodes: Vec::new(),
+    //         tag_registry: Default::default(),
+    //     }
+    // }
 
-    pub fn add_element(&mut self, tag: u8) -> NonZeroU32 {
-        self.ensure_tag_registered(tag);
-        let dense_idx = self.element_payloads.len();
-        if dense_idx >= 1073741824 {
-            panic!("Maximum number of nodes reached");
-        }
+    // pub fn add_element(&mut self, tag: u8, attrs: Option<Box<[Attribute]>>) -> NonZeroU32 {
+    //     self.ensure_tag_registered(tag);
+    //     let node_idx = self.nodes.len();
+    //
+    //     if node_idx == usize::MAX {
+    //         panic!("Maximum number of nodes reached");
+    //     }
+    //
+    //     match get_tag_name(tag) {
+    //         "br" | "hr" => self.nodes.push(DomNode {
+    //             parent: None,
+    //             next_sibling: None,
+    //             kind: NodeKind::EmptyLeaf {
+    //                 tag,
+    //             },
+    //         }),
+    //         _ => {
+    //             self.nodes.push(DomNode {
+    //                 parent: None,
+    //                 next_sibling: None,
+    //                 kind: NodeKind::Element {
+    //                     tag,
+    //                     first_child: None,
+    //                 },
+    //             });
+    //             self.add_attributes(attrs);
+    //         },
+    //     }
+    //
+    //     NonZeroU32::new((node_idx as u32) + 1).unwrap()
+    // }
 
-        self.element_payloads.push(ElementPayload {tag, first_child: None });
-
-        let key_val = 0_u32 | ((dense_idx as u32) + 1);
-        self.payload_keys.push(NonZeroU32::new(key_val));
-
-        let node_idx = self.parents.len();
-        if node_idx == usize::MAX {
-            panic!("Maximum number of nodes reached");
-        }
-        self.parents.push(None);
-        self.next_siblings.push(None);
-
-        NonZeroU32::new((node_idx as u32) + 1).unwrap()
-    }
-
-    pub fn add_text(&mut self, text_id: u32) -> NonZeroU32 {
-        let dense_idx = self.text_payloads.len();
-        self.text_payloads.push(NonZeroU32::new(text_id + 1)); // example wrapping
-
-        let key_val = (1_u32 << 30) | ((dense_idx as u32) + 1); // 1 = text bitmask
-        self.payload_keys.push(NonZeroU32::new(key_val));
-
-        let node_idx = self.parents.len();
-        self.parents.push(None);
-        self.next_siblings.push(None);
-        NonZeroU32::new((node_idx as u32) + 1).unwrap()
-    }
-
-    pub fn set_parent(&mut self, node: NonZeroU32, parent: NonZeroU32) {
-        let idx = (node.get() - 1) as usize;
-        self.parents[idx] = Some(parent);
-    }
-
-    pub fn set_first_child(&mut self, parent: NonZeroU32, child: Option<NonZeroU32>) {
-        let p_idx = (parent.get() - 1) as usize;
-        if let Some(key) = self.payload_keys[p_idx] {
-            let type_bits = key.get() >> 30;
-            if type_bits == 0 { // Element
-                let dense_idx = (key.get() & 0x3F_FF_FF_FF) as usize - 1;
-                self.element_payloads[dense_idx].first_child = child;
-            }
-        }
-    }
-
-    pub fn set_sibling(&mut self, node: NonZeroU32, sibling: Option<NonZeroU32>) {
-        let idx = (node.get() - 1) as usize;
-        self.next_siblings[idx] = sibling;
-    }
-
-    pub fn get_parent(&self, id: NonZeroU32) -> Option<NonZeroU32> {
-        let idx = (id.get() - 1) as usize;
-        self.parents[idx]
-    }
-
-    pub fn get_first_child(&self, parent: NonZeroU32) -> Option<NonZeroU32> {
-        let p_idx = (parent.get() - 1) as usize;
-        let key = self.payload_keys[p_idx]?.get();
-        if (key >> 30) == 0 {
-            let dense_idx = (key & 0x3F_FF_FF_FF) as usize - 1;
-            return self.element_payloads[dense_idx].first_child;
-        }
-        None
-    }
-
-    pub fn get_sibling(&self, node: NonZeroU32) -> Option<NonZeroU32> {
-        let idx = (node.get() - 1) as usize;
-        self.next_siblings[idx]
-    }
-
-    pub fn get_tag(&self, id: NonZeroU32) -> Option<u8> {
-        let idx = (id.get() - 1) as usize;
-        let key = self.payload_keys[idx]?.get();
-        let type_bits = key >> 30;
-
-        let dense_idx = (key & 0x3F_FF_FF_FF) as usize - 1;
-
-        match type_bits {
-            0 => Some(self.element_payloads[dense_idx].tag), // Element
-            2 => Some(self.void_payloads[dense_idx]),  // EmptyLeaf
-            _ => None, // Text nodes have no tag
-        }
-    }
-}
-
-#[cfg(not(feature = "dense-core"))]
-impl Dom {
-    pub fn new() -> Self {
-        Self {
-            nodes: Vec::new(),
-            tag_registry: Default::default(),
-        }
-    }
-
-    pub fn add_element(&mut self, tag: u8) -> NonZeroU32 {
-        self.ensure_tag_registered(tag);
-        let node_idx = self.nodes.len();
-
-        if node_idx == usize::MAX {
-            panic!("Maximum number of nodes reached");
-        }
-
-        match get_tag_name(tag) {
-            "br" | "hr" => self.nodes.push(DomNode {
-                parent: None,
-                next_sibling: None,
-                kind: NodeKind::EmptyLeaf {
-                    tag,
-                },
-            }),
-            _ => self.nodes.push(DomNode {
-                parent: None,
-                next_sibling: None,
-                kind: NodeKind::Element {
-                    tag,
-                    first_child: None,
-                },
-            })
-        }
-
-        NonZeroU32::new((node_idx as u32) + 1).unwrap()
-    }
-
-    pub fn add_text(&mut self, text_id: u32) -> NonZeroU32 {
+    pub fn add_text(&mut self, _text_id: u32) -> NonZeroU32 {
         let node_idx = self.nodes.len();
         self.nodes.push(DomNode {
             parent: None,
@@ -293,9 +194,7 @@ impl Dom {
     pub fn get_nodes_len(&self) -> usize {
         self.nodes.len()
     }
-}
 
-impl Dom {
     pub fn ensure_tag_registered(&mut self, tag: u8) {
         self.tag_registry.entry(tag).or_insert_with(|| {
             let name_str = get_tag_name(tag);
@@ -309,6 +208,122 @@ impl Dom {
     }
 }
 
+#[cfg(feature = "dense-core")]
+impl Dom {
+    pub fn new() -> Self {
+        Self {
+            nodes: Vec::with_capacity(512),
+            node_attributes: Vec::with_capacity(512),
+            tag_registry: HashMap::new(),
+        }
+    }
+
+    pub fn add_element(&mut self, tag: u8, attrs: Option<Box<[Attribute]>>) -> NonZeroU32 {
+        self.ensure_tag_registered(tag);
+        let node_idx = self.nodes.len();
+
+        if node_idx == usize::MAX {
+            panic!("Maximum number of nodes reached");
+        }
+
+        match get_tag_name(tag) {
+            "br" | "hr" => self.nodes.push(DomNode {
+                parent: None,
+                next_sibling: None,
+                kind: NodeKind::EmptyLeaf {
+                    tag,
+                },
+            }),
+            _ => {
+                self.nodes.push(DomNode {
+                    parent: None,
+                    next_sibling: None,
+                    kind: NodeKind::Element {
+                        tag,
+                        first_child: None,
+                    },
+                });
+                self.node_attributes.push(attrs);
+            },
+        }
+
+        NonZeroU32::new((node_idx as u32) + 1).unwrap()
+    }
+
+    pub fn set_attributes(&mut self, index: u32, attrs: Option<Box<[Attribute]>>) {
+        self.node_attributes[index as usize] = attrs;
+    }
+
+    pub fn get_attributes(&self, index: u32) -> Option<&[Attribute]> {
+        let attrs = self.node_attributes.get(index as usize).map(|attrs| attrs.as_ref())??;
+        Some(attrs.as_ref())
+    }
+}
+
+#[cfg(not(feature = "dense-core"))]
+impl Dom {
+    pub fn new() -> Self {
+        Self {
+            nodes: Vec::with_capacity(512),
+            tag_registry: HashMap::new(),
+        }
+    }
+
+    pub fn add_element(&mut self, tag: u8, attrs: Option<Box<[Attribute]>>) -> NonZeroU32 {
+        self.ensure_tag_registered(tag);
+        let node_idx = self.nodes.len();
+
+        if node_idx == usize::MAX {
+            panic!("Maximum number of nodes reached");
+        }
+
+        match get_tag_name(tag) {
+            "br" | "hr" => self.nodes.push(DomNode {
+                parent: None,
+                next_sibling: None,
+                kind: NodeKind::EmptyLeaf {
+                    tag,
+                },
+            }),
+            _ => {
+                self.nodes.push(DomNode {
+                    parent: None,
+                    next_sibling: None,
+                    kind: NodeKind::Element {
+                        tag,
+                        first_child: None,
+                        attrs
+                    },
+                });
+            },
+        }
+
+        NonZeroU32::new((node_idx as u32) + 1).unwrap()
+    }
+
+    pub fn set_attributes(&mut self, index: u32, _attrs: Option<Box<[Attribute]>>) {
+        let node_kind = &mut self.nodes[index as usize].kind;
+
+        match node_kind {
+            NodeKind::Element { attrs, .. } => {
+                *attrs = _attrs;
+            },
+            _ => {},
+        }
+    }
+
+    pub fn get_attributes(&self, index: u32) -> Option<&[Attribute]> {
+        let node = self.nodes.get(index as usize)?;
+
+        match &node.kind {
+            NodeKind::Element { attrs, .. } => {
+                attrs.as_deref()
+            },
+            _ => None,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -319,7 +334,7 @@ mod tests {
 
         // Define a theoretical u8 mapping for a <div> tag
         let div_tag = 15;
-        let node_id = dom.add_element(div_tag);
+        let node_id = dom.add_element(div_tag, None);
 
         assert_eq!(dom.get_tag(node_id), Some(div_tag));
         assert_eq!(dom.get_parent(node_id), None);
@@ -329,8 +344,8 @@ mod tests {
     fn test_nonzero_indexing_offset() {
         let mut dom = Dom::new();
 
-        let first_id = dom.add_element(10);
-        let second_id = dom.add_element(20);
+        let first_id = dom.add_element(10, None);
+        let second_id = dom.add_element(20, None);
 
         // Ensure IDs start at 1 and increment
         assert_eq!(first_id.get(), 1);

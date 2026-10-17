@@ -11,7 +11,7 @@ pub struct HtmlDom(pub RefCell<Dom>);
 impl HtmlDom {
     pub fn new() -> Self {
         let mut dom = blink_dom::Dom::new();
-        dom.add_element(0);
+        dom.add_element(0, None);
         Self(RefCell::new(dom))
     }
 }
@@ -45,7 +45,7 @@ impl TreeSink for HtmlDom {
         }
     }
 
-    fn create_element(&self, name: QualName, _attrs: Vec<Attribute>, _flags: ElementFlags) -> Self::Handle {
+    fn create_element(&self, name: QualName, attrs: Vec<Attribute>, _flags: ElementFlags) -> Self::Handle {
         let mut dom = self.0.borrow_mut();
         let mut tag = get_tag_index(&name.local);
 
@@ -54,7 +54,8 @@ impl TreeSink for HtmlDom {
             dom.tag_registry.insert(tag, Box::new(name));
         }
 
-        dom.add_element(tag)
+        let attrs_payload = if attrs.is_empty() { None } else { Some(attrs.into_boxed_slice()) };
+        dom.add_element(tag, attrs_payload)
     }
 
     fn create_comment(&self, _text: StrTendril) -> Self::Handle {

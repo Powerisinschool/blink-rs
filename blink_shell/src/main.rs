@@ -14,9 +14,5 @@ fn main() {
         .one(html_input.as_bytes());
 
     // Validation check on node layout tracking
-    #[cfg(not(feature = "dense-core"))]
     println!("Total flat nodes processed: {}", output_dom.0.borrow().get_nodes_len());
-
-    #[cfg(feature = "dense-core")]
-    println!("Total flat vectors processed: {}", output_dom.0.borrow().parents.len());
 }

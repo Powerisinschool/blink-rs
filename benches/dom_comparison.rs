@@ -28,51 +28,46 @@ const MEDIUM_HTML: &str = r#"
 
 const LARGE_HTML: &str = r#"
 <!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <title>Large Benchmark Core Document Target</title>
+<html class="no-js lang-en dir-ltr" id="app-root">
+<head class="metadata-container">
+    <meta charset="utf-8" class="meta-item"/>
+    <title class="page-title-node">Attribute Heavy Production Test Engine Target</title>
 </head>
-<body>
-    <header>
-        <nav role="navigation">
-            <ul>
-                <li><a href='#1'>Section 1</a></li><li><a href='#2'>Section 2</a></li>
-                <li><a href='#3'>Section 3</a></li><li><a href='#4'>Section 4</a></li>
+<body class="viewport-profile full-bleed light-theme" data-route="home">
+    <header class="global-navigation-bar layered-box" id="nav-header">
+        <nav class="nav-wrapper max-width-constrain" role="navigation">
+            <ul class="nav-list flex-row space-between">
+                <li class="nav-item active"><a href='#1' class="nav-link speed-optimized">Section 1</a></li>
+                <li class="nav-item"><a href='#2' class="nav-link secondary-trigger">Section 2</a></li>
+                <li class="nav-item"><a href='#3' class="nav-link tracking-analytics">Section 3</a></li>
+                <li class="nav-item"><a href='#4' class="nav-link debug-panel-toggle">Section 4</a></li>
             </ul>
         </nav>
     </header>
-    <main>
-        <article>
-            <h1>Main Topic Overview</h1>
-            <p>Paragraph section containing layout strings for baseline validation tracking matrices.</p>
-            <section id="1">
-                <h2>Subheading Layout 1</h2>
-                <div>
-                    <p>Deeply <span>nested <b>formatting <i>node stacks</i> here</b> inside</span> loops.</p>
-                    <ul>
-                        <li>Item A with text description block</li>
-                        <li>Item B with text description block</li>
-                        <li>Item C with text description block</li>
+    <main class="main-content-container grid-layout" id="primary-view">
+        <article class="article-body prose-optimized card-shadow" data-article-id="99281">
+            <h1 class="heading-hero core-title">Main Topic Overview String Node</h1>
+            <p class="paragraph-lead rendering-text-block">Paragraph section layout strings tracking metrics.</p>
+            <section class="content-section interactive-card" id="1" data-visible="true">
+                <h2 class="sub-heading-node accent-border">Subheading Layout 1</h2>
+                <div class="nested-wrapper flex-column container-padding">
+                    <p class="body-text micro-copy">Deeply <span class="highlight-text">nested <b class="bold-weight">formatting <i class="italicized-style">node stacks</i> here</b> inside</span> loops.</p>
+                    <ul class="ordered-metrics-list stylized-bullets">
+                        <li class="list-element-node active-row" data-index="0">Item A with text description block</li>
+                        <li class="list-element-node" data-index="1">Item B with text description block</li>
+                        <li class="list-element-node" data-index="2">Item C with text description block</li>
                     </ul>
                 </div>
             </section>
-            <section id="2">
-                <h2>Subheading Layout 2</h2>
-                <table>
-                    <thead><tr><th>Col 1</th><th>Col 2</th></tr></thead>
-                    <tbody>
-                        <tr><td>Cell 1A</td><td>Cell 1B</td></tr>
-                        <tr><td>Cell 2A</td><td>Cell 2B</td></tr>
-                    </tbody>
-                </table>
-            </section>
         </article>
     </main>
-    <footer><p>Copyright 2026 Blink Render Engine Workspace Performance Module</p></footer>
+    <footer class="footer-bar static-bottom informational-box" id="footer-node">
+        <p class="copyright-notice small-print">Copyright 2026 Blink Render Engine Workspace Performance Module</p>
+    </footer>
 </body>
 </html>
 "#;
+
 
 fn parse_html_string(input: &str) -> HtmlDom {
     parse_document(HtmlDom::new(), ParseOpts::default())
