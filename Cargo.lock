@@ -72,6 +72,7 @@ dependencies = [
 name = "blink_shell"
 version = "0.1.0"
 dependencies = [
+ "blink_css",
  "blink_html",
  "html5ever",
 ]

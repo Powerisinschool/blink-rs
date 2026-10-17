@@ -1,5 +1,6 @@
 use html5ever::ParseOpts;
 use html5ever::tendril::TendrilSink;
+use blink_css::{parse_css_into_stylesheet, CSSStyleSheet};
 use blink_html::HtmlDom;
 
 fn main() {
@@ -15,4 +16,11 @@ fn main() {
 
     // Validation check on node layout tracking
     println!("Total flat nodes processed: {}", output_dom.0.borrow().get_nodes_len());
+
+    let css_input = "div#header .button { width: 100px; height: 50px; border: 1px solid black; }";
+
+    let mut stylesheet = CSSStyleSheet::new();
+    parse_css_into_stylesheet(css_input, &mut stylesheet).unwrap();
+
+    println!("Parsed CSS stylesheet: {:?}", stylesheet);
 }
