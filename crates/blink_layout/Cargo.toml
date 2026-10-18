@@ -1,0 +1,9 @@
+[package]
+name = "blink_layout"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+markup5ever.workspace = true
+blink_dom = { path = "../blink_dom", features = ["dense-core"] }
+blink_css = { path = "../blink_css" }

@@ -5,7 +5,7 @@ edition = "2024"
 
 [features]
 dense-core = []
-default = []
+default = ["dense-core"]
 
 [dependencies]
 markup5ever.workspace = true

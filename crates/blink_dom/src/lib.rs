@@ -50,7 +50,7 @@ pub struct Dom {
 }
 
 #[cfg(feature = "dense-core")]
-enum NodeKind {
+pub enum NodeKind {
     Element {
         tag: u8, // Easily fits the indices for the ~150 HTML tags
         first_child: Option<NonZeroU32>
@@ -71,7 +71,7 @@ pub struct Dom {
 }
 
 #[cfg(not(feature = "dense-core"))]
-enum NodeKind {
+pub enum NodeKind {
     Element {
         tag: u8, // Easily fits the indices for the ~150 HTML tags
         first_child: Option<NonZeroU32>,
@@ -85,10 +85,10 @@ enum NodeKind {
     },
 }
 
-struct DomNode {
+pub struct DomNode {
     parent: Option<NonZeroU32>,
     next_sibling: Option<NonZeroU32>,
-    kind: NodeKind,
+    pub kind: NodeKind,
 }
 
 // ---------------------------------------------------------
@@ -194,6 +194,11 @@ impl Dom {
     pub fn get_nodes_len(&self) -> usize {
         self.nodes.len()
     }
+    
+    pub fn get_node(&self, id: NonZeroU32) -> Option<&DomNode> {
+        let idx = (id.get() - 1) as usize;
+        self.nodes.get(idx)
+    }
 
     pub fn ensure_tag_registered(&mut self, tag: u8) {
         self.tag_registry.entry(tag).or_insert_with(|| {
@@ -250,12 +255,12 @@ impl Dom {
         NonZeroU32::new((node_idx as u32) + 1).unwrap()
     }
 
-    pub fn set_attributes(&mut self, index: u32, attrs: Option<Box<[Attribute]>>) {
-        self.node_attributes[index as usize] = attrs;
+    pub fn set_attributes(&mut self, index: NonZeroU32, attrs: Option<Box<[Attribute]>>) {
+        self.node_attributes[(index.get() - 1) as usize] = attrs;
     }
 
-    pub fn get_attributes(&self, index: u32) -> Option<&[Attribute]> {
-        let attrs = self.node_attributes.get(index as usize).map(|attrs| attrs.as_ref())??;
+    pub fn get_attributes(&self, index: NonZeroU32) -> Option<&[Attribute]> {
+        let attrs = self.node_attributes.get((index.get() - 1) as usize).map(|attrs| attrs.as_ref())??;
         Some(attrs.as_ref())
     }
 }
@@ -301,8 +306,8 @@ impl Dom {
         NonZeroU32::new((node_idx as u32) + 1).unwrap()
     }
 
-    pub fn set_attributes(&mut self, index: u32, _attrs: Option<Box<[Attribute]>>) {
-        let node_kind = &mut self.nodes[index as usize].kind;
+    pub fn set_attributes(&mut self, index: NonZeroU32, _attrs: Option<Box<[Attribute]>>) {
+        let node_kind = &mut self.nodes[(index.get() - 1) as usize].kind;
 
         match node_kind {
             NodeKind::Element { attrs, .. } => {
@@ -312,8 +317,8 @@ impl Dom {
         }
     }
 
-    pub fn get_attributes(&self, index: u32) -> Option<&[Attribute]> {
-        let node = self.nodes.get(index as usize)?;
+    pub fn get_attributes(&self, index: NonZeroU32) -> Option<&[Attribute]> {
+        let node = self.nodes.get((index.get() - 1) as usize)?;
 
         match &node.kind {
             NodeKind::Element { attrs, .. } => {

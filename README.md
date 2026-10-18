@@ -67,7 +67,7 @@ Establish a unidirectional, non-reactive pipeline mapping text to a rasterized i
 - [x] Implement an HTML string parser generating a basic tree hierarchy.
 
 
-- [ ] Build a style cascading engine matching selector specificities.
+- [x] Build a style cascading engine matching selector specificities.
 
 
 - [ ] Write a simplified box-model layout calculator providing physical boundaries for Block and Inline text flows.
