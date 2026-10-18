@@ -18,6 +18,7 @@ pub enum Selector {
     ID(String),
     Class(String),
     Descendant,
+    // DirectDescendant,
 }
 
 impl CSSStyleSheet {
@@ -25,6 +26,28 @@ impl CSSStyleSheet {
         Self {
             rules: Vec::new(),
         }
+    }
+}
+
+impl CSSStyleRule {
+    // https://developer.mozilla.org/en-US/docs/Web/CSS/Guides/Cascade/Specificity
+    // returns (ID, CLASS, TYPE)
+    // Rust natively sorts tuples from left to right
+    pub fn specificity(&self) -> (u32, u32, u32) {
+        let mut ids = 0;
+        let mut classes = 0;
+        let mut tags = 0;
+
+        for part in &self.selector {
+            match part {
+                Selector::ID(_) => ids += 1,
+                Selector::Class(_) => classes += 1,
+                Selector::Tag(_) => tags += 1,
+                _ => {}
+            }
+        }
+
+        (ids, classes, tags)
     }
 }
 
