@@ -175,7 +175,7 @@ impl fmt::Debug for Dom {
 #[cfg(feature = "dense-core")]
 pub struct AttrTag;
 #[cfg(feature = "dense-core")]
-pub type AttrId = core::Id<AttrTag>;
+pub type AttrId = blink_core::Id<AttrTag>;
 
 #[cfg(feature = "dense-core")]
 pub enum NodeKind {
@@ -279,7 +279,7 @@ impl fmt::Debug for NodeKind {
 }
 
 pub struct DomNodeTag;
-pub type DomNodeId = core::Id<DomNodeTag>;
+pub type DomNodeId = blink_core::Id<DomNodeTag>;
 
 pub struct DomNode {
     parent: Option<DomNodeId>,

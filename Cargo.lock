@@ -63,6 +63,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3ded4057c258ba199e2d26386d3af3780957ecaee6c4ef4041c6b4b8b97c0b06"
 
 [[package]]
+name = "blink_core"
+version = "0.1.0"
+
+[[package]]
 name = "blink_css"
 version = "0.1.0"
 dependencies = [
@@ -73,7 +77,7 @@ dependencies = [
 name = "blink_dom"
 version = "0.1.0"
 dependencies = [
- "core",
+ "blink_core",
  "markup5ever",
 ]
 
@@ -91,9 +95,9 @@ dependencies = [
 name = "blink_layout"
 version = "0.1.0"
 dependencies = [
+ "blink_core",
  "blink_css",
  "blink_dom",
- "core",
  "markup5ever",
 ]
 
@@ -201,10 +205,6 @@ name = "clap_lex"
 version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1c133bc6a41be0d194c306b5506d15e6feeea7b1d6604bd3f8310dfb2ca96486"
-
-[[package]]
-name = "core"
-version = "0.1.0"
 
 [[package]]
 name = "crc32fast"

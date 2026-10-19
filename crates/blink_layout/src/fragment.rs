@@ -5,7 +5,7 @@ use std::fmt;
 use std::fmt::Formatter;
 
 pub struct LayoutFragmentTag;
-pub type LayoutFragmentId = core::Id<LayoutFragmentTag>;
+pub type LayoutFragmentId = blink_core::Id<LayoutFragmentTag>;
 
 pub struct LayoutFragment {
     pub dom_node: Option<DomNodeId>,

@@ -9,4 +9,4 @@ default = ["dense-core"]
 
 [dependencies]
 markup5ever.workspace = true
-core = { path = "../core" }
+blink_core = { path = "../blink_core" }

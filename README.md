@@ -2,7 +2,7 @@
 
 An experimental web rendering engine in Rust, focused on the **DOM → style → layout** pipeline. It takes the single-threaded, constraint-driven layout model of Chromium's LayoutNG as its reference design and rebuilds it around a flat, arena-allocated DOM.
 
-> **Status: pre-alpha, Phase 1 complete (proof of concept).** The engine parses HTML and CSS, matches selectors, lays out block and inline-block-style boxes, and writes a wireframe PNG of the resulting fragments. Text layout, margins/padding, wrapping and most of CSS are not implemented yet. See [Current limitations](#current-limitations) and the [Roadmap](#roadmap).
+> **Status: pre-alpha, Phase 1 complete (proof of concept).** The engine parses HTML and CSS, matches selectors, lays out block and inline-block-style boxes, and writes a wireframe PNG of the resulting fragments. Text layout, margins/padding, wrapping, and most of CSS are not implemented yet. See [Current limitations](#current-limitations) and the [Roadmap](#roadmap).
 >
 > This is an independent project. It is not affiliated with Google or the Chromium project; Blink and LayoutNG are used as architectural references only.
 
@@ -36,7 +36,7 @@ An experimental web rendering engine in Rust, focused on the **DOM → style →
 | `blink_layout` | Selector matching, cascade, `ConstraintSpace`, layout, fragment tree |
 | `blink_render` | Turns the fragment tree into pixels |
 | `blink_shell` | Executable that wires the crates together |
-| `core` | Shared primitives, notably the typed `Id<T>` handle |
+| `blink_core` | Shared primitives, notably the typed `Id<T>` handle |
 | `xtask` | Developer automation |
 
 ## Design
@@ -67,12 +67,12 @@ An experimental web rendering engine in Rust, focused on the **DOM → style →
 
 Known gaps, many of which are good places to start contributing (see [CONTRIBUTING.md](CONTRIBUTING.md)):
 
-- Text nodes are skipped, so there is no text layout, shaping or whitespace handling.
+- Text nodes are skipped, so there is no text layout, shaping, or whitespace handling.
 - The parser can emit several adjacent text nodes for one run of text; they are not merged.
 - `display: inline` behaves like `inline-block` (width and height apply). Real inline formatting does not exist yet.
 - No line wrapping: inline children that exceed the available width overflow instead of wrapping.
 - An auto-width inline box containing only block children collapses to zero width.
-- No margin, padding, border, `position`, floats or flexbox.
+- No margin, padding, border, `position`, floats, or flexbox.
 - No property inheritance. Only `px` lengths are parsed.
 - No child, sibling or attribute selectors, no pseudo-classes, no `!important`.
 - Unknown `display` values fall back to `inline`. Unknown tag names currently map to tag index 0.
@@ -116,13 +116,13 @@ Unit tests cover selector matching, specificity, descendant chains, length parsi
 
 - [ ] Immutable `ConstraintSpace` passed down the tree
 - [ ] Immutable physical fragment tree
-- [ ] Margin, padding and border (box model)
+- [ ] Margin, padding, and border (box model)
 - [ ] Incremental layout and caching driven by invalidation boundaries
 
 ### Phase 3: Binding and reactive layer
 
 - [ ] Bindings between V8 objects and arena DOM nodes
-- [ ] Invalidation manager connecting DOM mutation to restyle, relayout and repaint
+- [ ] Invalidation manager connecting DOM mutation to restyle, relayout, and repaint
 - [ ] Single-threaded event loop for timers, input and layout frames
 
 Skia-backed painting and text shaping (in `blink_render`) will land alongside Phases 1.5 and 2.
