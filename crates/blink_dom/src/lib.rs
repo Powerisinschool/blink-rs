@@ -200,6 +200,10 @@ impl Dom {
         self.nodes.get(idx)
     }
 
+    pub fn get_root_node_id(&self) -> NonZeroU32 {
+        NonZeroU32::new(1).unwrap()
+    }
+
     pub fn ensure_tag_registered(&mut self, tag: u8) {
         self.tag_registry.entry(tag).or_insert_with(|| {
             let name_str = get_tag_name(tag);

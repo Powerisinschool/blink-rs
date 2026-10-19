@@ -9,4 +9,6 @@ dense-core = ["blink_html/dense-core"]
 [dependencies]
 blink_html = { path = "../crates/blink_html" }
 blink_css = { path = "../crates/blink_css" }
+blink_layout = { path = "../crates/blink_layout" }
+blink_render = { path = "../crates/blink_render" }
 html5ever.workspace = true

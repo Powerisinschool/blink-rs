@@ -109,6 +109,8 @@ version = "0.1.0"
 dependencies = [
  "blink_css",
  "blink_html",
+ "blink_layout",
+ "blink_render",
  "html5ever",
 ]
 
