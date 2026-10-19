@@ -10,6 +10,7 @@
       <sourceFolder url="file://$MODULE_DIR$/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/xtask/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/blink_core/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/blink_layout/tests" isTestSource="true" />
       <sourceFolder url="file://$MODULE_DIR$/crates/blink_render/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
     </content>

@@ -98,6 +98,8 @@ dependencies = [
  "blink_core",
  "blink_css",
  "blink_dom",
+ "blink_html",
+ "html5ever",
  "markup5ever",
 ]
 
