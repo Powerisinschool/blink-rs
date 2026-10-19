@@ -81,10 +81,10 @@ impl TreeSink for HtmlDom {
 
         if let Some(first) = dom.get_first_child(*parent) {
             let mut curr = first;
-            while let Some(next) = dom.get_sibling(curr) {
+            while let Some(next) = dom.get_next_sibling(curr) {
                 curr = next;
             }
-            dom.set_sibling(curr, Some(child_handle));
+            dom.set_next_sibling(curr, Some(child_handle));
         } else {
             dom.set_first_child(*parent, Some(child_handle));
         }
@@ -125,15 +125,15 @@ impl TreeSink for HtmlDom {
         if let Some(p) = dom.get_parent(*target) {
             if let Some(first) = dom.get_first_child(p) {
                 if first == *target {
-                    let next = dom.get_sibling(*target);
+                    let next = dom.get_next_sibling(*target);
                     if let Some(n) = next {
                         dom.set_first_child(p, Some(n));
                     }
                 } else {
                     let mut curr = first;
-                    while let Some(next) = dom.get_sibling(curr) {
+                    while let Some(next) = dom.get_next_sibling(curr) {
                         if next == *target {
-                            dom.set_sibling(curr, self.0.borrow().get_sibling(*target));
+                            dom.set_next_sibling(curr, self.0.borrow().get_next_sibling(*target));
                             break;
                         }
                         curr = next;
@@ -141,7 +141,7 @@ impl TreeSink for HtmlDom {
                 }
             }
         }
-        dom.set_sibling(*target, None);
+        dom.set_next_sibling(*target, None);
     }
 
     fn reparent_children(&self, node: &Self::Handle, new_parent: &Self::Handle) {
@@ -150,7 +150,7 @@ impl TreeSink for HtmlDom {
         if let Some(first) = dom.get_first_child(*node) {
             let mut curr = first;
             dom.set_parent(curr, *new_parent);
-            while let Some(next) = dom.get_sibling(curr) {
+            while let Some(next) = dom.get_next_sibling(curr) {
                 curr = next;
                 dom.set_parent(curr, *new_parent);
             }
@@ -158,10 +158,10 @@ impl TreeSink for HtmlDom {
             // Append the whole chain to the end of the new parent's children
             if let Some(np_first) = dom.get_first_child(*new_parent) {
                 let mut np_curr = np_first;
-                while let Some(np_next) = dom.get_sibling(np_curr) {
+                while let Some(np_next) = dom.get_next_sibling(np_curr) {
                     np_curr = np_next;
                 }
-                dom.set_sibling(np_curr, Some(first));
+                dom.set_next_sibling(np_curr, Some(first));
             } else {
                 dom.set_first_child(*new_parent, Some(first));
             }

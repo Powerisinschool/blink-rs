@@ -158,7 +158,7 @@ impl Dom {
         }
     }
 
-    pub fn set_sibling(&mut self, node: NonZeroU32, sibling: Option<NonZeroU32>) {
+    pub fn set_next_sibling(&mut self, node: NonZeroU32, sibling: Option<NonZeroU32>) {
         let idx = (node.get() - 1) as usize;
         self.nodes[idx].next_sibling = sibling;
     }
@@ -177,7 +177,7 @@ impl Dom {
         }
     }
 
-    pub fn get_sibling(&self, node: NonZeroU32) -> Option<NonZeroU32> {
+    pub fn get_next_sibling(&self, node: NonZeroU32) -> Option<NonZeroU32> {
         let idx = (node.get() - 1) as usize;
         self.nodes[idx].next_sibling
     }
