@@ -9,4 +9,3 @@ blink_dom = { path = "../blink_dom", features = ["dense-core"] }
 blink_css = { path = "../blink_css" }
 blink_core = { path = "../blink_core" }
 blink_html = { path = "../blink_html" }
-html5ever.workspace = true

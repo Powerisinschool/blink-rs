@@ -26,8 +26,7 @@ jobs:
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
-      # Start permissive; switch to `-- -D warnings` once the existing warnings are cleaned up.
-      - run: cargo clippy --workspace --all-targets
+      - run: cargo clippy --workspace --all-targets -- -D warnings
 
   test:
     runs-on: ubuntu-latest

@@ -1,7 +1,7 @@
 use blink_dom::{Dom, DomNodeId, get_tag_index};
 use html5ever::interface::{ElementFlags, NodeOrText, QuirksMode, TreeSink};
-use html5ever::tendril::StrTendril;
-use html5ever::{Attribute, ExpandedName, QualName};
+use html5ever::tendril::{StrTendril, TendrilSink};
+use html5ever::{Attribute, ExpandedName, ParseOpts, QualName};
 use std::borrow::Cow;
 use std::cell::RefCell;
 
@@ -229,17 +229,10 @@ impl TreeSink for HtmlDom {
     }
 }
 
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
+pub fn parse_html(html: &str) -> Dom {
+    html5ever::parse_document(HtmlDom::new(), ParseOpts::default())
+        .from_utf8()
+        .one(html.as_bytes())
+        .0
+        .into_inner()
 }
