@@ -96,6 +96,7 @@ pub enum NodeKind {
     },
     EmptyLeaf {
         tag: u8, // Easily fits the indices for the ~150 HTML tags
+        attrs: Option<AttrId>
     },
 }
 
@@ -123,8 +124,15 @@ impl fmt::Debug for NodeKind {
                 f.debug_struct("Text")
                     .finish()
             }
-            NodeKind::EmptyLeaf { tag } => {
-                f.debug_struct("EmptyLeaf")
+            NodeKind::EmptyLeaf { tag, attrs } => {
+                let mut debug = f.debug_struct("EmptyLeaf");
+
+                match attrs {
+                    Some(a) => debug.field("attrs", a),
+                    None => debug.field("attrs", &None::<AttrId>),
+                };
+
+                debug
                     .field("tag_str", &get_tag_name(*tag))
                     .finish()
             }
@@ -300,7 +308,7 @@ impl Dom {
         let idx = (id.get() - 1) as usize;
         match self.nodes[idx].kind {
             NodeKind::Element { tag, .. } => Some(tag),
-            NodeKind::EmptyLeaf { tag } => Some(tag),
+            NodeKind::EmptyLeaf { tag, .. } => Some(tag),
             _ => None,
         }
     }
@@ -345,13 +353,16 @@ impl Dom {
         self.ensure_tag_registered(tag);
         let node_idx = self.nodes.len();
 
+        let attrs = attrs.filter(|a| !a.is_empty()).map(|a| {
+            self.attribute_table.push(Some(a));
+            AttrId::from_usize(self.attribute_table.len() - 1).unwrap()
+        });
+
         let kind = match get_tag_name(tag) {
-            "br" | "hr" => NodeKind::EmptyLeaf { tag },
+            "br" | "hr" => {
+                NodeKind::EmptyLeaf { tag, attrs }
+            },
             _ => {
-                let attrs = attrs.filter(|a| !a.is_empty()).map(|a| {
-                    self.attribute_table.push(Some(a));
-                    AttrId::from_usize(self.attribute_table.len() - 1).unwrap()
-                });
                 NodeKind::Element {
                     tag,
                     first_child: None,
@@ -374,7 +385,8 @@ impl Dom {
         };
 
         let attrs_index = match node.kind {
-            NodeKind::Element { attrs: Some(attrs_id), .. } => Some(attrs_id.get_index()),
+            NodeKind::EmptyLeaf { attrs: Some(attrs_id), .. }
+            | NodeKind::Element { attrs: Some(attrs_id), .. } => Some(attrs_id.get_index()),
             _ => None
         };
 
@@ -396,7 +408,8 @@ impl Dom {
 
     pub fn get_attributes(&self, id: DomNodeId) -> Option<&[Attribute]> {
         match &self.nodes.get(id.get_index())?.kind {
-            NodeKind::Element { attrs: Some(attrs_id), .. } => {
+            NodeKind::EmptyLeaf { attrs: Some(attrs_id), .. }
+            | NodeKind::Element { attrs: Some(attrs_id), .. } => {
                 self.attribute_table.get(attrs_id.get_index())?.as_deref()
             },
             _ => None,

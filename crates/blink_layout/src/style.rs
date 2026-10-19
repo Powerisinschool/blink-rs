@@ -86,7 +86,7 @@ fn match_compound(node_id: DomNodeId, dom: &Dom, parts: &[Selector]) -> bool {
                     None => return false,
                 };
                 let is_match = match &node.kind {
-                    NodeKind::Element { tag, .. } | NodeKind::EmptyLeaf { tag } => {
+                    NodeKind::Element { tag, .. } | NodeKind::EmptyLeaf { tag, .. } => {
                         let tag_name = get_tag_name(*tag);
                         target_tag == tag_name
                     }
