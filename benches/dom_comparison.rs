@@ -1,8 +1,8 @@
 use blink_html::HtmlDom;
-use criterion::{criterion_main, Criterion, criterion_group};
+use criterion::{Criterion, criterion_group, criterion_main};
 use html5ever::tendril::TendrilSink;
 use html5ever::{ParseOpts, parse_document};
-use stats_alloc::{Region, StatsAlloc, INSTRUMENTED_SYSTEM};
+use stats_alloc::{INSTRUMENTED_SYSTEM, Region, StatsAlloc};
 use std::alloc::System;
 use std::hint::black_box;
 
@@ -68,14 +68,16 @@ const LARGE_HTML: &str = r#"
 </html>
 "#;
 
-
 fn parse_html_string(input: &str) -> HtmlDom {
-    parse_document(HtmlDom::new(), ParseOpts::default())
-        .one(input)
+    parse_document(HtmlDom::new(), ParseOpts::default()).one(input)
 }
 
 fn bench_dense_core(c: &mut Criterion) {
-    let variant = if !cfg!(feature = "dense-core") { "variant_a" } else { "variant_b" };
+    let variant = if !cfg!(feature = "dense-core") {
+        "variant_a"
+    } else {
+        "variant_b"
+    };
     let mut group = c.benchmark_group("DOM_Parsing");
 
     group.bench_function("small_dom", |b| {
@@ -96,28 +98,34 @@ fn bench_dense_core(c: &mut Criterion) {
     println!("📊 HEAP METRICS FOR [{}]", variant.to_uppercase());
 
     // Track Small HTML Memory Lifecycle
-    let reg_small = Region::new(&GLOBAL);
+    let reg_small = Region::new(GLOBAL);
     let dom_small = parse_html_string(SMALL_HTML);
     std::mem::drop(black_box(dom_small));
     let stats_small = reg_small.change();
-    println!("   [Small HTML] Allocations: {}, Total Leaked/Retained: {} bytes",
-             stats_small.allocations, stats_small.bytes_allocated);
+    println!(
+        "   [Small HTML] Allocations: {}, Total Leaked/Retained: {} bytes",
+        stats_small.allocations, stats_small.bytes_allocated
+    );
 
     // Track Medium HTML Memory Lifecycle
-    let reg_med = Region::new(&GLOBAL);
+    let reg_med = Region::new(GLOBAL);
     let dom_med = parse_html_string(MEDIUM_HTML);
     std::mem::drop(black_box(dom_med));
     let stats_med = reg_med.change();
-    println!("   [Medium HTML] Allocations: {}, Total Leaked/Retained: {} bytes",
-             stats_med.allocations, stats_med.bytes_allocated);
+    println!(
+        "   [Medium HTML] Allocations: {}, Total Leaked/Retained: {} bytes",
+        stats_med.allocations, stats_med.bytes_allocated
+    );
 
     // Track Large HTML Memory Lifecycle
-    let reg_large = Region::new(&GLOBAL);
+    let reg_large = Region::new(GLOBAL);
     let dom_large = parse_html_string(LARGE_HTML);
     std::mem::drop(black_box(dom_large));
     let stats_large = reg_large.change();
-    println!("   [Large HTML] Allocations: {}, Total Leaked/Retained: {} bytes",
-             stats_large.allocations, stats_large.bytes_allocated);
+    println!(
+        "   [Large HTML] Allocations: {}, Total Leaked/Retained: {} bytes",
+        stats_large.allocations, stats_large.bytes_allocated
+    );
 
     println!("==================================================\n");
 }

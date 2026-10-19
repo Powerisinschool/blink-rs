@@ -1,15 +1,15 @@
-use std::collections::HashMap;
 use cssparser::{Parser, Token};
+use std::collections::HashMap;
 
 #[derive(Debug, Default)]
 pub struct CSSStyleSheet {
-    pub rules: Vec<CSSStyleRule>
+    pub rules: Vec<CSSStyleRule>,
 }
 
 #[derive(Debug)]
 pub struct CSSStyleRule {
     pub selector: Vec<Selector>,
-    pub properties: HashMap<String, String>
+    pub properties: HashMap<String, String>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -23,9 +23,7 @@ pub enum Selector {
 
 impl CSSStyleSheet {
     pub fn new() -> Self {
-        Self {
-            rules: Vec::new(),
-        }
+        Self { rules: Vec::new() }
     }
 }
 
@@ -51,19 +49,20 @@ impl CSSStyleRule {
     }
 }
 
-pub fn parse_css_into_stylesheet(input: &str, stylesheet: &mut CSSStyleSheet) -> Result<(), ()> {
-    let mut parser = Parser::new(&input);
+pub fn parse_css_into_stylesheet(input: &str, stylesheet: &mut CSSStyleSheet) {
+    let mut parser = Parser::new(input);
 
     while !parser.is_exhausted() {
-        if let Err(_) = parse_next_rule(&mut parser, stylesheet) {
+        if parse_next_rule(&mut parser, stylesheet).is_err() {
             let _ = parser.next();
         }
     }
-
-    Ok(())
 }
 
-fn parse_next_rule(parser: &mut Parser, stylesheet: &mut CSSStyleSheet) -> Result<(), cssparser::ParseError<()>> {
+fn parse_next_rule(
+    parser: &mut Parser,
+    stylesheet: &mut CSSStyleSheet,
+) -> Result<(), cssparser::ParseError<()>> {
     let mut selector: Vec<Selector> = Vec::new();
 
     loop {
@@ -76,11 +75,8 @@ fn parse_next_rule(parser: &mut Parser, stylesheet: &mut CSSStyleSheet) -> Resul
                     parse_properties(nested_parser, &mut properties)
                 })?;
 
-                match selector.last() {
-                    Some(Selector::Descendant) => {
-                        selector.pop();
-                    },
-                    _ => {}
+                if let Some(Selector::Descendant) = selector.last() {
+                    selector.pop();
                 }
 
                 stylesheet.rules.push(CSSStyleRule {
@@ -88,19 +84,13 @@ fn parse_next_rule(parser: &mut Parser, stylesheet: &mut CSSStyleSheet) -> Resul
                     properties,
                 });
                 break;
-            },
+            }
             Token::Ident(name) => selector.push(Selector::Tag(name.to_string())),
-            Token::Delim(c) => {
-                match c {
-                    '.' => {
-                        match parser.next()? {
-                            Token::Ident(name) => selector.push(Selector::Class(name.to_string())),
-                            _ => {}
-                        }
-                    },
-                    _ => {}
+            Token::Delim('.') => {
+                if let Token::Ident(name) = parser.next()? {
+                    selector.push(Selector::Class(name.to_string()))
                 }
-            },
+            }
             Token::WhiteSpace(_) => {
                 if selector.is_empty() {
                     continue;
@@ -111,7 +101,7 @@ fn parse_next_rule(parser: &mut Parser, stylesheet: &mut CSSStyleSheet) -> Resul
                     }
                     _ => {}
                 }
-            },
+            }
             Token::IDHash(name) => selector.push(Selector::ID(name.to_string())),
             _ => {}
         }
@@ -120,7 +110,10 @@ fn parse_next_rule(parser: &mut Parser, stylesheet: &mut CSSStyleSheet) -> Resul
     Ok(())
 }
 
-fn parse_properties(parser: &mut Parser, properties: &mut HashMap<String, String>) -> Result<(), cssparser::ParseError<()>> {
+fn parse_properties(
+    parser: &mut Parser,
+    properties: &mut HashMap<String, String>,
+) -> Result<(), cssparser::ParseError<()>> {
     while !parser.is_exhausted() {
         let name = match parser.next()? {
             Token::Ident(name) => name.to_string(),
@@ -139,18 +132,20 @@ fn parse_properties(parser: &mut Parser, properties: &mut HashMap<String, String
             }
 
             match token {
-                Token::Ident(v) => value.push_str(&v),
+                Token::Ident(v) => value.push_str(v),
                 Token::Number { value: num, .. } => value.push_str(&num.to_string()),
-                Token::Dimension { value: num, unit, .. } => {
+                Token::Dimension {
+                    value: num, unit, ..
+                } => {
                     value.push_str(&num.to_string());
-                    value.push_str(&unit);
-                },
+                    value.push_str(unit);
+                }
                 Token::WhiteSpace(_) => value.push(' '),
                 Token::IDHash(name) | Token::Hash(name) => {
                     value.push('#');
-                    value.push_str(&name);
-                },
-                _ => {},
+                    value.push_str(name);
+                }
+                _ => {}
             }
         }
 
@@ -167,58 +162,88 @@ mod tests {
     #[test]
     fn test_empty_input() {
         let mut stylesheet = CSSStyleSheet::new();
-        parse_css_into_stylesheet("", &mut stylesheet).unwrap();
+        parse_css_into_stylesheet("", &mut stylesheet);
         assert!(stylesheet.rules.is_empty());
     }
 
     #[test]
     fn test_whitespace_handling() {
         let mut stylesheet = CSSStyleSheet::new();
-        parse_css_into_stylesheet("   \n\t", &mut stylesheet).unwrap();
+        parse_css_into_stylesheet("   \n\t", &mut stylesheet);
         assert!(stylesheet.rules.is_empty());
     }
 
     #[test]
     fn test_basic_element_rule() {
         let mut stylesheet = CSSStyleSheet::new();
-        parse_css_into_stylesheet("p { color: red; }", &mut stylesheet).unwrap();
+        parse_css_into_stylesheet("p { color: red; }", &mut stylesheet);
 
         assert_eq!(stylesheet.rules.len(), 1);
         assert_eq!(stylesheet.rules[0].selector.len(), 1);
-        assert_eq!(stylesheet.rules[0].selector[0], Selector::Tag("p".to_string()));
+        assert_eq!(
+            stylesheet.rules[0].selector[0],
+            Selector::Tag("p".to_string())
+        );
         assert_eq!(stylesheet.rules[0].properties.get("color").unwrap(), "red");
     }
 
     #[test]
     fn test_multiple_properties() {
         let mut stylesheet = CSSStyleSheet::new();
-        parse_css_into_stylesheet("div { width: 100px; height: 50px; }", &mut stylesheet).unwrap();
+        parse_css_into_stylesheet("div { width: 100px; height: 50px; }", &mut stylesheet);
 
         assert_eq!(stylesheet.rules.len(), 1);
-        assert_eq!(stylesheet.rules[0].properties.get("width").unwrap(), "100px");
-        assert_eq!(stylesheet.rules[0].properties.get("height").unwrap(), "50px");
+        assert_eq!(
+            stylesheet.rules[0].properties.get("width").unwrap(),
+            "100px"
+        );
+        assert_eq!(
+            stylesheet.rules[0].properties.get("height").unwrap(),
+            "50px"
+        );
     }
 
     #[test]
     fn test_id_and_class_selectors() {
         let mut stylesheet = CSSStyleSheet::new();
-        parse_css_into_stylesheet("div#main .card { margin: 10px; }", &mut stylesheet).unwrap();
+        parse_css_into_stylesheet("div#main .card { margin: 10px; }", &mut stylesheet);
 
         assert_eq!(stylesheet.rules.len(), 1);
         assert_eq!(stylesheet.rules[0].selector.len(), 4);
-        assert_eq!(stylesheet.rules[0].selector[0], Selector::Tag("div".to_string()));
-        assert_eq!(stylesheet.rules[0].selector[1], Selector::ID("main".to_string()));
+        assert_eq!(
+            stylesheet.rules[0].selector[0],
+            Selector::Tag("div".to_string())
+        );
+        assert_eq!(
+            stylesheet.rules[0].selector[1],
+            Selector::ID("main".to_string())
+        );
         assert_eq!(stylesheet.rules[0].selector[2], Selector::Descendant);
-        assert_eq!(stylesheet.rules[0].selector[3], Selector::Class("card".to_string()));
+        assert_eq!(
+            stylesheet.rules[0].selector[3],
+            Selector::Class("card".to_string())
+        );
     }
 
     #[test]
     fn test_complex_property_values() {
         let mut stylesheet = CSSStyleSheet::new();
-        parse_css_into_stylesheet(".button { border: 1px solid black; background-color: #f3f3f3; }", &mut stylesheet).unwrap();
+        parse_css_into_stylesheet(
+            ".button { border: 1px solid black; background-color: #f3f3f3; }",
+            &mut stylesheet,
+        );
 
-        assert_eq!(stylesheet.rules[0].properties.get("border").unwrap(), "1px solid black");
-        assert_eq!(stylesheet.rules[0].properties.get("background-color").unwrap(), "#f3f3f3");
+        assert_eq!(
+            stylesheet.rules[0].properties.get("border").unwrap(),
+            "1px solid black"
+        );
+        assert_eq!(
+            stylesheet.rules[0]
+                .properties
+                .get("background-color")
+                .unwrap(),
+            "#f3f3f3"
+        );
     }
 
     #[test]
@@ -226,16 +251,25 @@ mod tests {
         let mut stylesheet = CSSStyleSheet::new();
         parse_css_into_stylesheet(
             "h1 { font-size: 24px; } \n p { color: blue; }",
-            &mut stylesheet
-        ).unwrap();
+            &mut stylesheet,
+        );
 
         assert_eq!(stylesheet.rules.len(), 2);
         assert_eq!(stylesheet.rules[0].selector.len(), 1);
-        assert_eq!(stylesheet.rules[0].selector[0], Selector::Tag("h1".to_string()));
-        assert_eq!(stylesheet.rules[0].properties.get("font-size").unwrap(), "24px");
+        assert_eq!(
+            stylesheet.rules[0].selector[0],
+            Selector::Tag("h1".to_string())
+        );
+        assert_eq!(
+            stylesheet.rules[0].properties.get("font-size").unwrap(),
+            "24px"
+        );
 
         assert_eq!(stylesheet.rules[1].selector.len(), 1);
-        assert_eq!(stylesheet.rules[1].selector[0], Selector::Tag("p".to_string()));
+        assert_eq!(
+            stylesheet.rules[1].selector[0],
+            Selector::Tag("p".to_string())
+        );
         assert_eq!(stylesheet.rules[1].properties.get("color").unwrap(), "blue");
     }
 }

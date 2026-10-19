@@ -15,10 +15,19 @@ impl HtmlDom {
     }
 }
 
+impl Default for HtmlDom {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TreeSink for HtmlDom {
     type Handle = DomNodeId;
     type Output = Self;
-    type ElemName<'a> = ExpandedName<'a> where Self: 'a;
+    type ElemName<'a>
+        = ExpandedName<'a>
+    where
+        Self: 'a;
 
     fn finish(self) -> Self {
         self
@@ -35,16 +44,22 @@ impl TreeSink for HtmlDom {
     fn elem_name<'a>(&'a self, target: &'a Self::Handle) -> ExpandedName<'a> {
         let dom = self.0.borrow();
         let tag = dom.get_tag(*target).unwrap_or(0);
-        let boxed_name = dom.tag_registry.get(&tag).expect("Tag should be registered");
+        let boxed_name = dom
+            .tag_registry
+            .get(&tag)
+            .expect("Tag should be registered");
 
         let ptr = &**boxed_name as *const QualName;
 
-        unsafe {
-            (*ptr).expanded()
-        }
+        unsafe { (*ptr).expanded() }
     }
 
-    fn create_element(&self, name: QualName, attrs: Vec<Attribute>, _flags: ElementFlags) -> Self::Handle {
+    fn create_element(
+        &self,
+        name: QualName,
+        attrs: Vec<Attribute>,
+        _flags: ElementFlags,
+    ) -> Self::Handle {
         let mut dom = self.0.borrow_mut();
         let mut tag = get_tag_index(&name.local);
 
@@ -53,7 +68,11 @@ impl TreeSink for HtmlDom {
             dom.tag_registry.insert(tag, Box::new(name));
         }
 
-        let attrs_payload = if attrs.is_empty() { None } else { Some(attrs.into_boxed_slice()) };
+        let attrs_payload = if attrs.is_empty() {
+            None
+        } else {
+            Some(attrs.into_boxed_slice())
+        };
         dom.add_element(tag, attrs_payload)
     }
 
@@ -89,11 +108,21 @@ impl TreeSink for HtmlDom {
         }
     }
 
-    fn append_based_on_parent_node(&self, element: &Self::Handle, _prev_element: &Self::Handle, child: NodeOrText<Self::Handle>) {
+    fn append_based_on_parent_node(
+        &self,
+        element: &Self::Handle,
+        _prev_element: &Self::Handle,
+        child: NodeOrText<Self::Handle>,
+    ) {
         self.append(element, child)
     }
 
-    fn append_doctype_to_document(&self, _name: StrTendril, _public_id: StrTendril, _system_id: StrTendril) {
+    fn append_doctype_to_document(
+        &self,
+        _name: StrTendril,
+        _public_id: StrTendril,
+        _system_id: StrTendril,
+    ) {
         // todo!()
     }
 
@@ -151,23 +180,23 @@ impl TreeSink for HtmlDom {
     fn remove_from_parent(&self, target: &Self::Handle) {
         let mut dom = self.0.borrow_mut();
 
-        if let Some(p) = dom.get_parent(*target) {
-            if let Some(first) = dom.get_first_child(p) {
-                if first == *target {
-                    let next = dom.get_next_sibling(*target);
-                    // if let Some(n) = next {
-                    //     dom.set_first_child(p, Some(n));
-                    // }
-                    dom.set_first_child(p, next);
-                } else {
-                    let mut curr = first;
-                    while let Some(next) = dom.get_next_sibling(curr) {
-                        if next == *target {
-                            dom.set_next_sibling(curr, self.0.borrow().get_next_sibling(*target));
-                            break;
-                        }
-                        curr = next;
+        if let Some(p) = dom.get_parent(*target)
+            && let Some(first) = dom.get_first_child(p)
+        {
+            if first == *target {
+                let next = dom.get_next_sibling(*target);
+                // if let Some(n) = next {
+                //     dom.set_first_child(p, Some(n));
+                // }
+                dom.set_first_child(p, next);
+            } else {
+                let mut curr = first;
+                while let Some(next) = dom.get_next_sibling(curr) {
+                    if next == *target {
+                        dom.set_next_sibling(curr, self.0.borrow().get_next_sibling(*target));
+                        break;
                     }
+                    curr = next;
                 }
             }
         }

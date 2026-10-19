@@ -1,113 +1,136 @@
-# Blink-Rust: A Systems-First Web Rendering Engine
+# Blink-Rust
 
-## Executive Strategy & Architectural Philosophy
+An experimental web rendering engine in Rust, focused on the **DOM → style → layout** pipeline. It takes the single-threaded, constraint-driven layout model of Chromium's LayoutNG as its reference design and rebuilds it around a flat, arena-allocated DOM.
 
-Blink-Rust is a focused, structural rewrite of the Blink rendering engine architecture in Rust. The goal is to build a modern web rendering engine by cloning the single-threaded layout mental model of Chromium's LayoutNG.
+> **Status: pre-alpha, Phase 1 complete (proof of concept).** The engine parses HTML and CSS, matches selectors, lays out block and inline-block-style boxes, and writes a wireframe PNG of the resulting fragments. Text layout, margins/padding, wrapping and most of CSS are not implemented yet. See [Current limitations](#current-limitations) and the [Roadmap](#roadmap).
+>
+> This is an independent project. It is not affiliated with Google or the Chromium project; Blink and LayoutNG are used as architectural references only.
 
-* The project avoids building commodity components from scratch to maintain strict focus on the layout and DOM pipeline.
+![Phase 1 output: fragment boundaries for assets/test.html](docs/phase1-output.png)
 
+*Wireframe of the layout fragments produced from [`assets/test.html`](assets/test.html) and [`assets/test.css`](assets/test.css).*
 
-* Industry-standard technologies like Google's V8 (via rusty-v8) and Skia are integrated for execution and graphics rendering.
+## Goals
 
+- Build the layout and DOM core of a browser engine, not everything around it. Commodity pieces (HTML tokenization/tree construction via `html5ever`, planned V8 and Skia integration) are reused rather than rewritten.
+- Use Rust's ownership model to design the tree structures instead of fighting it: no raw-pointer trees, no `Rc<RefCell<_>>` graphs.
+- Stay close enough to LayoutNG's concepts (constraint spaces in, fragments out) that its public design documents remain a useful guide.
 
-* Rust's memory safety and immutable pipeline paradigms are leveraged entirely for the core tree construction and layout architectures.
+## Pipeline
 
+```
+ HTML string ──► blink_html ──► Dom (arena) ───────────┐
+                (html5ever)                            │
+                                                       ▼
+ CSS string  ──► blink_css  ──► CSSStyleSheet ──► blink_layout ──► FragmentArena ──► blink_render ──► output.png
+                                                 (style + layout)
+```
 
+## Workspace
 
-## Core Engineering Frontier: The Arena-Allocated DOM
+| Crate | Responsibility |
+|---|---|
+| `blink_dom` | Arena-allocated DOM tree, tag table, attribute storage |
+| `blink_html` | HTML parsing into the arena DOM using `html5ever` |
+| `blink_css` | CSS tokenizer/parser and the `CSSStyleSheet`/`CSSStyleRule` model |
+| `blink_layout` | Selector matching, cascade, `ConstraintSpace`, layout, fragment tree |
+| `blink_render` | Turns the fragment tree into pixels |
+| `blink_shell` | Executable that wires the crates together |
+| `core` | Shared primitives, notably the typed `Id<T>` handle |
+| `xtask` | Developer automation |
 
-Standard tree structures using traditional raw pointers yield undefined behavior in Rust, while `Rc<RefCell>` implementations result in cycle leaks and severe performance degradation. Blink-Rust solves this through a flat, arena-allocated generational index topology.
+## Design
 
-### Data-Oriented `dense-core` Architecture
+### Arena DOM (`blink_dom`)
 
-* The DOM topology is split into strictly typed parallel arrays of primitives rather than bloated standard enums.
+- Nodes live in a single `Vec<DomNode>` and are addressed by `DomNodeId`, a typed, 1-based, non-zero `u32` handle. `Option<DomNodeId>` is therefore 4 bytes.
+- Tree structure uses intrusive links: each node stores `parent` and `next_sibling`, and elements store `first_child`. There is no per-node `Vec<Child>`.
+- `NodeKind` is `Element`, `Text` or `EmptyLeaf` (`<br>`, `<hr>`).
+- Tag names are `u8` indices into a sorted static table of HTML tags: O(log n) to look up by name, O(1) to get the name back.
+- Attributes are stored out of line and referenced from element nodes, so text nodes and attribute-less elements pay nothing for them.
+- Two storage layouts sit behind the `dense-core` Cargo feature. [`benches/dom_comparison.rs`](benches/dom_comparison.rs) compares them. Both must pass the test suite.
 
+### Style (`blink_layout::style`)
 
-* Parent and sibling pointers utilize `NonZeroU32` structures to guarantee a strict 4-byte memory footprint per reference.
+- Selectors: type, `#id`, `.class`, compound selectors, and the descendant combinator.
+- Cascade: matching rules are ordered by specificity, with source order breaking ties. Supported properties: `display` (`block`, `inline`, `none`), `width` and `height` (`px`).
+- A small built-in user-agent default maps tags to a default `display` (for example `div` → block, `head` → none).
 
+### Layout (`blink_layout::engine`)
 
-* Payload keys pack a 2-bit type identifier and a 30-bit dense index into a single 32-bit integer, allowing addressing for up to 1,073,741,823 items per array.
+- Layout is a recursive pass over the DOM. For each node it computes style, prunes `display: none`, resolves size from the parent's `ConstraintSpace`, lays out children, then resolves any auto height.
+- Block children stack vertically. Inline children flow left to right on a line whose height is the tallest child. Auto-width blocks take the available width; auto-width inline boxes shrink-wrap their content.
+- Output is a `FragmentArena`: a flat `Vec<LayoutFragment>` with `first_child`/`next_sibling` links, mirroring the DOM's topology. Fragments are built parent-relative and then converted to absolute coordinates in a final pass.
+- Fragments are **not yet immutable**. They are patched while layout runs. Making them immutable is a Phase 2 goal.
 
+## Current limitations
 
-* This Structure of Arrays layout drastically improves CPU cache hit rates during DOM traversal by eliminating the padding overhead natively introduced by Rust enums.
+Known gaps, many of which are good places to start contributing (see [CONTRIBUTING.md](CONTRIBUTING.md)):
 
+- Text nodes are skipped, so there is no text layout, shaping or whitespace handling.
+- The parser can emit several adjacent text nodes for one run of text; they are not merged.
+- `display: inline` behaves like `inline-block` (width and height apply). Real inline formatting does not exist yet.
+- No line wrapping: inline children that exceed the available width overflow instead of wrapping.
+- An auto-width inline box containing only block children collapses to zero width.
+- No margin, padding, border, `position`, floats or flexbox.
+- No property inheritance. Only `px` lengths are parsed.
+- No child, sibling or attribute selectors, no pseudo-classes, no `!important`.
+- Unknown `display` values fall back to `inline`. Unknown tag names currently map to tag index 0.
+- `blink_render` currently draws fragment boundaries, not painted content.
 
+## Building and running
 
-## Workspace & Component Structure
+```sh
+cargo build --workspace
+cargo run -p blink_shell     # lays out assets/test.html with assets/test.css and writes output.png
+```
 
-The project is structured as a Cargo virtual workspace monorepo. This ensures strict architectural boundaries and prevents dependency fragmentation across the pipeline.
+## Testing
 
-* **`blink_dom`**: Implements the memory-safe, arena-allocated DOM tree utilizing generational `u32` index keys.
+```sh
+cargo test --workspace                          # default DOM layout
+cargo test --workspace --features blink_dom/dense-core   # dense-core DOM layout
+cargo bench                                     # DOM storage comparison (see run_bench.sh)
+```
 
+Unit tests cover selector matching, specificity, descendant chains, length parsing, and attribute lookup across text and `<br>` nodes. A golden test asserting fragment rectangles for `assets/test.html` is planned.
 
-* **`blink_html`**: Provides a strict 1:1 implementation of the HTML5 tokenization and tree-construction algorithms via `html5ever` integrations.
+## Roadmap
 
+### Phase 1: Linear static pipeline (complete)
 
-* **`blink_css`**: Houses the custom CSS tokenizer and style cascading engine.
+- [x] HTML parser producing an arena DOM
+- [x] Selector matching and specificity-based cascade
+- [x] Block and inline-block box layout with `display: none` pruning
+- [x] Fragment tree rendered to an image
 
+### Phase 1.5: Text and inline flow
 
-* **`blink_layout`**: Contains the core immutable layout pipeline and Constraint Spaces logic.
+- [ ] Merge adjacent text nodes in the tree builder
+- [ ] Whitespace collapsing and text fragments
+- [ ] Line breaking and wrapping
+- [ ] Rename the current `Inline` to `InlineBlock`; introduce true inline layout
+- [ ] Golden tests for all fixtures in `assets/`
 
+### Phase 2: LayoutNG-style architecture
 
-* **`blink_render`**: Manages the graphical output and text shaping coordination.
+- [ ] Immutable `ConstraintSpace` passed down the tree
+- [ ] Immutable physical fragment tree
+- [ ] Margin, padding and border (box model)
+- [ ] Incremental layout and caching driven by invalidation boundaries
 
+### Phase 3: Binding and reactive layer
 
-* **`blink_shell`**: The primary executable entry point wiring the core libraries together.
+- [ ] Bindings between V8 objects and arena DOM nodes
+- [ ] Invalidation manager connecting DOM mutation to restyle, relayout and repaint
+- [ ] Single-threaded event loop for timers, input and layout frames
 
+Skia-backed painting and text shaping (in `blink_render`) will land alongside Phases 1.5 and 2.
 
+## Contributing
 
-## Phased Implementation Roadmap
+Contributions are welcome, especially on the items in [Current limitations](#current-limitations). Read [CONTRIBUTING.md](CONTRIBUTING.md) first.
 
-The development pipeline is structured into three distinct milestones.
+## License
 
-### Phase 1: The Linear Static Pipeline
-
-Establish a unidirectional, non-reactive pipeline mapping text to a rasterized image buffer.
-
-- [x] Implement an HTML string parser generating a basic tree hierarchy.
-
-
-- [x] Build a style cascading engine matching selector specificities.
-
-
-- [x] Write a simplified box-model layout calculator providing physical boundaries for Block and Inline text flows.
-
-
-- [x] Bind layout outputs to drawing coordinates for static frame generation.
-
-
-
-### Phase 2: Cloning the LayoutNG Paradigm
-
-Transition to Blink's modern immutable architecture.
-
-- [ ] Encapsulate layout limits into immutable Constraint Spaces passed down during traversal.
-
-
-- [ ] Generate an immutable physical Fragment Tree to avoid Rust mutable reference collision conflicts.
-
-
-- [ ] Implement incremental display caching to bypass downstream layout computations based on invalidation boundaries.
-
-
-
-### Phase 3: The Binding & Reactive Layer
-
-Inject execution functionality into the static engine layout system.
-
-- [ ] Build a robust marshalling abstraction layer between V8 JavaScript objects and the underlying Rust arena DOM nodes.
-
-
-- [ ] Connect JS element modifications to an explicit invalidation manager for re-styling and re-painting.
-
-
-- [ ] Standardize a single-threaded main event queue processing timers, UI inputs, and layout frames.
-
-
-
-## Testing and Orchestration
-
-* Unified module testing validates isolated memory layout behaviors across both dense and standard allocation feature flags.
-
-
-* An `xtask` binary orchestrates complex web platform test pipelines and command-line system builds.
+See [LICENSE](LICENSE).

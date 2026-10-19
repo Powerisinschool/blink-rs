@@ -25,9 +25,7 @@ impl fmt::Debug for LayoutFragment {
             None => debug.field("dom_node_id", &"None"),
         };
 
-        debug
-            .field("rect", &self.rect)
-            .field("style", &self.style);
+        debug.field("rect", &self.rect).field("style", &self.style);
 
         match &self.first_child {
             Some(id) => debug.field("first_child", id),
@@ -60,7 +58,8 @@ impl<'a> fmt::Debug for IndexedFragment<'a> {
 
 impl fmt::Debug for FragmentArena {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let indexed_list: Vec<IndexedFragment> = self.fragments
+        let indexed_list: Vec<IndexedFragment> = self
+            .fragments
             .iter()
             .enumerate()
             .map(|(i, frag)| IndexedFragment {
@@ -76,11 +75,7 @@ impl fmt::Debug for FragmentArena {
 }
 
 impl LayoutFragment {
-    pub fn new(
-        dom_node: Option<DomNodeId>,
-        rect: PhysicalRect,
-        style: ComputedStyle
-    ) -> Self {
+    pub fn new(dom_node: Option<DomNodeId>, rect: PhysicalRect, style: ComputedStyle) -> Self {
         Self {
             dom_node,
             rect,
@@ -110,5 +105,11 @@ impl FragmentArena {
         let fragment_id = self.fragments.len();
         self.fragments.push(fragment);
         LayoutFragmentId::from_usize(fragment_id).unwrap()
+    }
+}
+
+impl Default for FragmentArena {
+    fn default() -> Self {
+        Self::new()
     }
 }

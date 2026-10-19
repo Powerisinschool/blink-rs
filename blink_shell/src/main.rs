@@ -1,21 +1,20 @@
-use std::fs;
-use html5ever::ParseOpts;
-use html5ever::tendril::TendrilSink;
-use blink_css::{parse_css_into_stylesheet, CSSStyleSheet};
+use blink_css::{CSSStyleSheet, parse_css_into_stylesheet};
 use blink_html::HtmlDom;
 use blink_layout::engine::build_layout_tree;
 use blink_layout::geom::PhysicalSize;
 use blink_layout::space::ConstraintSpace;
 use blink_render::render_to_png;
+use html5ever::ParseOpts;
+use html5ever::tendril::TendrilSink;
+use std::fs;
 
 const OUTPUT_WIDTH: u32 = 800;
 const OUTPUT_HEIGHT: u32 = 600;
 
 fn main() {
-    let html_input = fs::read_to_string("assets/test.html")
-        .expect("Failed to read assets/test.html");
-    let css_input = fs::read_to_string("assets/test.css")
-        .expect("Failed to read assets/test.css");
+    let html_input =
+        fs::read_to_string("assets/test.html").expect("Failed to read assets/test.html");
+    let css_input = fs::read_to_string("assets/test.css").expect("Failed to read assets/test.css");
 
     // Build empty DOM Tree
     let empty_dom = HtmlDom::new();
@@ -27,7 +26,7 @@ fn main() {
 
     // Parse CSS rules
     let mut stylesheet = CSSStyleSheet::new();
-    parse_css_into_stylesheet(&css_input, &mut stylesheet).unwrap();
+    parse_css_into_stylesheet(&css_input, &mut stylesheet);
     // println!("Parsed CSS stylesheet: {:?}", stylesheet);
 
     // Calculate layout boundaries

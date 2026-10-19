@@ -32,7 +32,11 @@ pub fn compute_style(node_id: DomNodeId, dom: &Dom, stylesheet: &CSSStyleSheet) 
     cascade_properties(&mut rules, default_display(node_id, dom))
 }
 
-fn get_matching_rules<'a>(node_id: DomNodeId, dom: &Dom, stylesheet: &'a CSSStyleSheet) -> Vec<&'a CSSStyleRule> {
+fn get_matching_rules<'a>(
+    node_id: DomNodeId,
+    dom: &Dom,
+    stylesheet: &'a CSSStyleSheet,
+) -> Vec<&'a CSSStyleRule> {
     let mut matching_rules: Vec<&CSSStyleRule> = vec![];
     for rule in &stylesheet.rules {
         if matches_selector(node_id, dom, rule) {
@@ -48,11 +52,16 @@ fn matches_selector(node_id: DomNodeId, dom: &Dom, rule: &CSSStyleRule) -> bool 
 }
 
 fn match_parts(node_id: DomNodeId, dom: &Dom, parts: &[Selector]) -> bool {
-    if parts.is_empty() { return true; }
+    if parts.is_empty() {
+        return true;
+    }
 
     // Search for the last Descendant combinator from the right
     // e.g., parsing [Tag("div"), Descendant, Class("card")]
-    if let Some(descendant_idx) = parts.iter().rposition(|p| matches!(p, Selector::Descendant)) {
+    if let Some(descendant_idx) = parts
+        .iter()
+        .rposition(|p| matches!(p, Selector::Descendant))
+    {
         let ancestor_parts = &parts[..descendant_idx];
         let target_parts = &parts[descendant_idx + 1..];
 
@@ -92,28 +101,38 @@ fn match_compound(node_id: DomNodeId, dom: &Dom, parts: &[Selector]) -> bool {
                     }
                     NodeKind::Text {} => false,
                 };
-                if !is_match { return false; }
-            },
+                if !is_match {
+                    return false;
+                }
+            }
             Selector::ID(target_id) => {
                 let attrs = match dom.get_attributes(node_id) {
                     Some(attrs) => attrs,
                     None => return false,
                 };
-                if !attrs.iter().any(|attr| attr.name.local == local_name!("id") && attr.value.as_ref() == target_id) {
+                if !attrs.iter().any(|attr| {
+                    attr.name.local == local_name!("id") && attr.value.as_ref() == target_id
+                }) {
                     return false;
                 }
-            },
+            }
             Selector::Class(target_class) => {
                 let attrs = match dom.get_attributes(node_id) {
                     Some(attrs) => attrs,
                     None => return false,
                 };
                 let has_class = attrs.iter().any(|attr| {
-                    attr.name.local == local_name!("class") &&
-                        attr.value.as_ref().split_whitespace().any(|c| c == target_class)
+                    attr.name.local == local_name!("class")
+                        && attr
+                            .value
+                            .as_ref()
+                            .split_whitespace()
+                            .any(|c| c == target_class)
                 });
-                if !has_class { return false; }
-            },
+                if !has_class {
+                    return false;
+                }
+            }
             Selector::Descendant => unreachable!("Descendants are handled by match_parts"),
         }
     }
@@ -125,7 +144,9 @@ fn default_display(node_id: DomNodeId, dom: &Dom) -> Display {
         Some(NodeKind::Element { tag, .. }) | Some(NodeKind::EmptyLeaf { tag, .. }) => {
             match get_tag_name(*tag) {
                 "head" | "script" | "style" | "title" | "meta" | "link" => Display::None,
-                "document" | "html" | "body" | "div" | "p" | "section" | "ul" | "li" => Display::Block,
+                "document" | "html" | "body" | "div" | "p" | "section" | "ul" | "li" => {
+                    Display::Block
+                }
                 _ => Display::Inline,
             }
         }
@@ -133,8 +154,11 @@ fn default_display(node_id: DomNodeId, dom: &Dom) -> Display {
     }
 }
 
-fn cascade_properties(matched_rules: &mut Vec<&CSSStyleRule>, mut display: Display) -> ComputedStyle {
-    matched_rules.sort_by(|a, b| a.specificity().cmp(&b.specificity()));
+fn cascade_properties(
+    matched_rules: &mut Vec<&CSSStyleRule>,
+    mut display: Display,
+) -> ComputedStyle {
+    matched_rules.sort_by_key(|a| a.specificity());
 
     let mut width = None;
     let mut height = None;
@@ -174,8 +198,8 @@ fn parse_px_value(mut val: &str) -> Option<f32> {
 mod tests {
     use super::*;
     use blink_css::parse_css_into_stylesheet;
-    use markup5ever::{Attribute, LocalName, QualName, ns};
     use blink_dom::get_tag_index;
+    use markup5ever::{Attribute, LocalName, QualName, ns};
 
     const DIV_TAG_INDEX: u8 = 29;
     const P_TAG_INDEX: u8 = 73;
@@ -189,7 +213,7 @@ mod tests {
 
     fn get_first_rule(css: &str) -> CSSStyleRule {
         let mut stylesheet = CSSStyleSheet::new();
-        parse_css_into_stylesheet(css, &mut stylesheet).unwrap();
+        parse_css_into_stylesheet(css, &mut stylesheet);
         stylesheet.rules.remove(0)
     }
 
@@ -210,22 +234,40 @@ mod tests {
         dom.set_first_child(div_node, Some(p_node));
 
         let rule_p = get_first_rule("p { color: red; }");
-        assert!(matches_selector(p_node, &dom, &rule_p), "Should match direct 'p' tag");
+        assert!(
+            matches_selector(p_node, &dom, &rule_p),
+            "Should match direct 'p' tag"
+        );
 
         let rule_card = get_first_rule(".card { margin: 0; }");
-        assert!(matches_selector(p_node, &dom, &rule_card), "Should match '.card' class");
+        assert!(
+            matches_selector(p_node, &dom, &rule_card),
+            "Should match '.card' class"
+        );
 
         let rule_active = get_first_rule(".active { display: block; }");
-        assert!(matches_selector(p_node, &dom, &rule_active), "Should match '.active' class");
+        assert!(
+            matches_selector(p_node, &dom, &rule_active),
+            "Should match '.active' class"
+        );
 
         let rule_fail = get_first_rule(".button { padding: 5px; }");
-        assert!(!matches_selector(p_node, &dom, &rule_fail), "Should NOT match missing '.button' class");
+        assert!(
+            !matches_selector(p_node, &dom, &rule_fail),
+            "Should NOT match missing '.button' class"
+        );
 
         let rule_descendant = get_first_rule("div#main .card { border: 1px; }");
-        assert!(matches_selector(p_node, &dom, &rule_descendant), "Should match descendant 'div#main .card'");
+        assert!(
+            matches_selector(p_node, &dom, &rule_descendant),
+            "Should match descendant 'div#main .card'"
+        );
 
         let rule_descendant_fail = get_first_rule("span#main .card { border: 1px; }");
-        assert!(!matches_selector(p_node, &dom, &rule_descendant_fail), "Should NOT match if parent tag is wrong");
+        assert!(
+            !matches_selector(p_node, &dom, &rule_descendant_fail),
+            "Should NOT match if parent tag is wrong"
+        );
     }
 
     #[test]
@@ -236,9 +278,18 @@ mod tests {
         let p_tag = blink_dom::get_tag_index("p");
 
         // Hierarchy: <div id="main"> -> <section class="container"> -> <p class="card">
-        let div_node = dom.add_element(div_tag, Some(vec![make_attr("id", "main")].into_boxed_slice()));
-        let section_node = dom.add_element(section_tag, Some(vec![make_attr("class", "container")].into_boxed_slice()));
-        let p_node = dom.add_element(p_tag, Some(vec![make_attr("class", "card")].into_boxed_slice()));
+        let div_node = dom.add_element(
+            div_tag,
+            Some(vec![make_attr("id", "main")].into_boxed_slice()),
+        );
+        let section_node = dom.add_element(
+            section_tag,
+            Some(vec![make_attr("class", "container")].into_boxed_slice()),
+        );
+        let p_node = dom.add_element(
+            p_tag,
+            Some(vec![make_attr("class", "card")].into_boxed_slice()),
+        );
 
         // Wire the pointers
         dom.set_parent(section_node, div_node);
@@ -302,7 +353,7 @@ mod tests {
         let div_node = dom.add_element(DIV_TAG_INDEX, Some(div_attrs));
 
         let mut stylesheet = CSSStyleSheet::new();
-        parse_css_into_stylesheet("div { width: 100px; height: 100px; }", &mut stylesheet).unwrap();
+        parse_css_into_stylesheet("div { width: 100px; height: 100px; }", &mut stylesheet);
 
         let computed_style = compute_style(div_node, &dom, &stylesheet);
         assert_eq!(computed_style.width, Some(100.0));
@@ -315,10 +366,7 @@ mod tests {
         dom.ensure_tag_registered(DIV_TAG_INDEX);
 
         // Build Node: <div id="hero" class="banner">
-        let attrs = vec![
-            make_attr("id", "hero"),
-            make_attr("class", "banner")
-        ].into_boxed_slice();
+        let attrs = vec![make_attr("id", "hero"), make_attr("class", "banner")].into_boxed_slice();
 
         let div_node = dom.add_element(DIV_TAG_INDEX, Some(attrs));
 
@@ -329,15 +377,26 @@ mod tests {
             .banner { width: 200px; display: block; }
             div#hero { width: 300px; }
         ";
-        parse_css_into_stylesheet(css, &mut stylesheet).unwrap();
+        parse_css_into_stylesheet(css, &mut stylesheet);
 
         let computed = compute_style(div_node, &dom, &stylesheet);
 
-        assert_eq!(computed.height, Some(50.0), "Height should be inherited from the base tag rule");
+        assert_eq!(
+            computed.height,
+            Some(50.0),
+            "Height should be inherited from the base tag rule"
+        );
 
-        assert!(matches!(computed.display, Display::Block), "Class rule should override Tag rule for display");
+        assert!(
+            matches!(computed.display, Display::Block),
+            "Class rule should override Tag rule for display"
+        );
 
-        assert_eq!(computed.width, Some(300.0), "ID rule should have highest specificity and win the width cascade");
+        assert_eq!(
+            computed.width,
+            Some(300.0),
+            "ID rule should have highest specificity and win the width cascade"
+        );
     }
 
     #[test]
@@ -346,7 +405,12 @@ mod tests {
         let div = blink_dom::get_tag_index("div");
         let _text = dom.add_text(0);
         let el = dom.add_element(div, Some(vec![make_attr("id", "x")].into_boxed_slice()));
-        assert!(dom.get_attributes(el).unwrap().iter().any(|a| a.value.as_ref() == "x"));
+        assert!(
+            dom.get_attributes(el)
+                .unwrap()
+                .iter()
+                .any(|a| a.value.as_ref() == "x")
+        );
     }
 
     #[test]
@@ -357,6 +421,11 @@ mod tests {
         dom.add_element(br, None);
         dom.add_text(0);
         let el = dom.add_element(div, Some(vec![make_attr("id", "x")].into_boxed_slice()));
-        assert!(dom.get_attributes(el).unwrap().iter().any(|a| a.value.as_ref() == "x"));
+        assert!(
+            dom.get_attributes(el)
+                .unwrap()
+                .iter()
+                .any(|a| a.value.as_ref() == "x")
+        );
     }
 }

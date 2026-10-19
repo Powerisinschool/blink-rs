@@ -4,18 +4,117 @@ use std::fmt;
 use std::fmt::Formatter;
 
 const HTML_TAGS: &[&str] = &[
-    "a", "abbr", "address", "area", "article", "aside", "audio", "b", "base", "bdi",
-    "bdo", "blockquote", "body", "br", "button", "canvas", "caption", "cite", "code",
-    "col", "colgroup", "data", "datalist", "dd", "del", "details", "dfn", "dialog",
-    "div", "dl", "dt", "em", "embed", "fieldset", "figcaption", "figure", "footer",
-    "form", "h1", "h2", "h3", "h4", "h5", "h6", "head", "header", "hgroup", "hr",
-    "html", "i", "iframe", "img", "input", "ins", "kbd", "label", "legend", "li",
-    "link", "main", "map", "mark", "menu", "meta", "meter", "nav", "noscript",
-    "object", "ol", "optgroup", "option", "output", "p", "picture", "pre",
-    "progress", "q", "rp", "rt", "ruby", "s", "samp", "script", "section", "select",
-    "slot", "small", "source", "span", "strong", "style", "sub", "summary", "sup",
-    "table", "tbody", "td", "template", "textarea", "tfoot", "th", "thead", "time",
-    "title", "tr", "track", "u", "ul", "var", "video", "wbr"
+    "a",
+    "abbr",
+    "address",
+    "area",
+    "article",
+    "aside",
+    "audio",
+    "b",
+    "base",
+    "bdi",
+    "bdo",
+    "blockquote",
+    "body",
+    "br",
+    "button",
+    "canvas",
+    "caption",
+    "cite",
+    "code",
+    "col",
+    "colgroup",
+    "data",
+    "datalist",
+    "dd",
+    "del",
+    "details",
+    "dfn",
+    "dialog",
+    "div",
+    "dl",
+    "dt",
+    "em",
+    "embed",
+    "fieldset",
+    "figcaption",
+    "figure",
+    "footer",
+    "form",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "head",
+    "header",
+    "hgroup",
+    "hr",
+    "html",
+    "i",
+    "iframe",
+    "img",
+    "input",
+    "ins",
+    "kbd",
+    "label",
+    "legend",
+    "li",
+    "link",
+    "main",
+    "map",
+    "mark",
+    "menu",
+    "meta",
+    "meter",
+    "nav",
+    "noscript",
+    "object",
+    "ol",
+    "optgroup",
+    "option",
+    "output",
+    "p",
+    "picture",
+    "pre",
+    "progress",
+    "q",
+    "rp",
+    "rt",
+    "ruby",
+    "s",
+    "samp",
+    "script",
+    "section",
+    "select",
+    "slot",
+    "small",
+    "source",
+    "span",
+    "strong",
+    "style",
+    "sub",
+    "summary",
+    "sup",
+    "table",
+    "tbody",
+    "td",
+    "template",
+    "textarea",
+    "tfoot",
+    "th",
+    "thead",
+    "time",
+    "title",
+    "tr",
+    "track",
+    "u",
+    "ul",
+    "var",
+    "video",
+    "wbr",
 ];
 
 // O(log(N))
@@ -40,8 +139,6 @@ pub fn get_tag_name(tag: u8) -> &'static str {
     }
 }
 
-
-
 // A proposed, more memory-efficient representation of the DOM
 #[cfg(feature = "dense-core")]
 pub struct Dom {
@@ -64,18 +161,14 @@ impl<'a> fmt::Debug for IndexedNode<'a> {
 
 impl fmt::Debug for Dom {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let indexed_list: Vec<IndexedNode> = self.nodes
+        let indexed_list: Vec<IndexedNode> = self
+            .nodes
             .iter()
             .enumerate()
-            .map(|(i, node)| IndexedNode {
-                index: i + 1,
-                node,
-            })
+            .map(|(i, node)| IndexedNode { index: i + 1, node })
             .collect();
 
-        f.debug_struct("Dom")
-            .field("nodes", &indexed_list)
-            .finish()
+        f.debug_struct("Dom").field("nodes", &indexed_list).finish()
     }
 }
 
@@ -89,14 +182,14 @@ pub enum NodeKind {
     Element {
         tag: u8, // Easily fits the indices for the ~150 HTML tags
         first_child: Option<DomNodeId>,
-        attrs: Option<AttrId>
+        attrs: Option<AttrId>,
     },
     Text {
         // text_id: u32
     },
     EmptyLeaf {
         tag: u8, // Easily fits the indices for the ~150 HTML tags
-        attrs: Option<AttrId>
+        attrs: Option<AttrId>,
     },
 }
 
@@ -104,7 +197,11 @@ pub enum NodeKind {
 impl fmt::Debug for NodeKind {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            NodeKind::Element { tag, first_child, attrs } => {
+            NodeKind::Element {
+                tag,
+                first_child,
+                attrs,
+            } => {
                 let mut debug = f.debug_struct("Element");
                 debug.field("tag_str", &get_tag_name(*tag));
 
@@ -120,10 +217,7 @@ impl fmt::Debug for NodeKind {
 
                 debug.finish()
             }
-            NodeKind::Text { .. } => {
-                f.debug_struct("Text")
-                    .finish()
-            }
+            NodeKind::Text { .. } => f.debug_struct("Text").finish(),
             NodeKind::EmptyLeaf { tag, attrs } => {
                 let mut debug = f.debug_struct("EmptyLeaf");
 
@@ -132,9 +226,7 @@ impl fmt::Debug for NodeKind {
                     None => debug.field("attrs", &None::<AttrId>),
                 };
 
-                debug
-                    .field("tag_str", &get_tag_name(*tag))
-                    .finish()
+                debug.field("tag_str", &get_tag_name(*tag)).finish()
             }
         }
     }
@@ -167,22 +259,21 @@ pub enum NodeKind {
 impl fmt::Debug for NodeKind {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            NodeKind::Element { tag, first_child, attrs } => {
-                f.debug_struct("Element")
-                    .field("tag_str", &get_tag_name(*tag))
-                    .field("first_child", first_child)
-                    .field("attrs", attrs)
-                    .finish()
-            }
-            NodeKind::Text { .. } => {
-                f.debug_struct("Text")
-                    .finish()
-            }
-            NodeKind::EmptyLeaf { tag } => {
-                f.debug_struct("EmptyLeaf")
-                    .field("tag_str", &get_tag_name(*tag))
-                    .finish()
-            }
+            NodeKind::Element {
+                tag,
+                first_child,
+                attrs,
+            } => f
+                .debug_struct("Element")
+                .field("tag_str", &get_tag_name(*tag))
+                .field("first_child", first_child)
+                .field("attrs", attrs)
+                .finish(),
+            NodeKind::Text { .. } => f.debug_struct("Text").finish(),
+            NodeKind::EmptyLeaf { tag } => f
+                .debug_struct("EmptyLeaf")
+                .field("tag_str", &get_tag_name(*tag))
+                .finish(),
         }
     }
 }
@@ -207,9 +298,7 @@ impl fmt::Debug for DomNode {
             Some(id) => debug.field("next_sibling", id),
             None => debug.field("next_sibling", &None::<DomNodeId>),
         };
-        debug
-            .field("kind", &self.kind)
-            .finish()
+        debug.field("kind", &self.kind).finish()
     }
 }
 
@@ -275,7 +364,11 @@ impl Dom {
 
     pub fn set_first_child(&mut self, parent: DomNodeId, child: Option<DomNodeId>) {
         let idx = (parent.get() - 1) as usize;
-        if let NodeKind::Element { ref mut first_child, .. } = self.nodes[idx].kind {
+        if let NodeKind::Element {
+            ref mut first_child,
+            ..
+        } = self.nodes[idx].kind
+        {
             *first_child = child;
         }
     }
@@ -316,7 +409,7 @@ impl Dom {
     pub fn get_nodes_len(&self) -> usize {
         self.nodes.len()
     }
-    
+
     pub fn get_node(&self, id: DomNodeId) -> Option<&DomNode> {
         let idx = (id.get() - 1) as usize;
         self.nodes.get(idx)
@@ -333,9 +426,15 @@ impl Dom {
             Box::new(QualName::new(
                 None,
                 ns!(html),
-                markup5ever::LocalName::from(name_str)
+                markup5ever::LocalName::from(name_str),
             ))
         });
+    }
+}
+
+impl Default for Dom {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -359,22 +458,26 @@ impl Dom {
         });
 
         let kind = match get_tag_name(tag) {
-            "br" | "hr" => {
-                NodeKind::EmptyLeaf { tag, attrs }
-            },
-            _ => {
-                NodeKind::Element {
-                    tag,
-                    first_child: None,
-                    attrs,
-                }
+            "br" | "hr" => NodeKind::EmptyLeaf { tag, attrs },
+            _ => NodeKind::Element {
+                tag,
+                first_child: None,
+                attrs,
             },
         };
-        self.nodes.push(DomNode { parent: None, next_sibling: None, kind });
+        self.nodes.push(DomNode {
+            parent: None,
+            next_sibling: None,
+            kind,
+        });
         DomNodeId::from_usize(node_idx).unwrap()
     }
 
-    pub fn set_attributes(&mut self, id: DomNodeId, attrs: Option<Box<[Attribute]>>) -> Result<(), String> {
+    pub fn set_attributes(
+        &mut self,
+        id: DomNodeId,
+        attrs: Option<Box<[Attribute]>>,
+    ) -> Result<(), String> {
         if attrs.is_none() {
             return Ok(());
         }
@@ -385,9 +488,15 @@ impl Dom {
         };
 
         let attrs_index = match node.kind {
-            NodeKind::EmptyLeaf { attrs: Some(attrs_id), .. }
-            | NodeKind::Element { attrs: Some(attrs_id), .. } => Some(attrs_id.get_index()),
-            _ => None
+            NodeKind::EmptyLeaf {
+                attrs: Some(attrs_id),
+                ..
+            }
+            | NodeKind::Element {
+                attrs: Some(attrs_id),
+                ..
+            } => Some(attrs_id.get_index()),
+            _ => None,
         };
 
         match attrs_index {
@@ -408,10 +517,14 @@ impl Dom {
 
     pub fn get_attributes(&self, id: DomNodeId) -> Option<&[Attribute]> {
         match &self.nodes.get(id.get_index())?.kind {
-            NodeKind::EmptyLeaf { attrs: Some(attrs_id), .. }
-            | NodeKind::Element { attrs: Some(attrs_id), .. } => {
-                self.attribute_table.get(attrs_id.get_index())?.as_deref()
-            },
+            NodeKind::EmptyLeaf {
+                attrs: Some(attrs_id),
+                ..
+            }
+            | NodeKind::Element {
+                attrs: Some(attrs_id),
+                ..
+            } => self.attribute_table.get(attrs_id.get_index())?.as_deref(),
             _ => None,
         }
     }
@@ -438,9 +551,7 @@ impl Dom {
             "br" | "hr" => self.nodes.push(DomNode {
                 parent: None,
                 next_sibling: None,
-                kind: NodeKind::EmptyLeaf {
-                    tag,
-                },
+                kind: NodeKind::EmptyLeaf { tag },
             }),
             _ => {
                 self.nodes.push(DomNode {
@@ -449,10 +560,10 @@ impl Dom {
                     kind: NodeKind::Element {
                         tag,
                         first_child: None,
-                        attrs
+                        attrs,
                     },
                 });
-            },
+            }
         }
 
         DomNodeId::from_u32((node_idx as u32) + 1).unwrap()
@@ -464,8 +575,8 @@ impl Dom {
         match node_kind {
             NodeKind::Element { attrs, .. } => {
                 *attrs = _attrs;
-            },
-            _ => {},
+            }
+            _ => {}
         }
     }
 
@@ -473,9 +584,7 @@ impl Dom {
         let node = self.nodes.get(index.get_index())?;
 
         match &node.kind {
-            NodeKind::Element { attrs, .. } => {
-                attrs.as_deref()
-            },
+            NodeKind::Element { attrs, .. } => attrs.as_deref(),
             _ => None,
         }
     }

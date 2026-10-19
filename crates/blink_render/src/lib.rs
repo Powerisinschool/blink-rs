@@ -7,7 +7,8 @@ pub fn render_to_png(
     height: u32,
     output_path: &str,
 ) -> Result<(), String> {
-    let mut pixmap = Pixmap::new(width, height).ok_or_else(|| "Failed to create pixmap".to_string())?;
+    let mut pixmap =
+        Pixmap::new(width, height).ok_or_else(|| "Failed to create pixmap".to_string())?;
 
     pixmap.fill(Color::WHITE);
 
@@ -22,7 +23,7 @@ pub fn render_to_png(
             rect_data.origin.x,
             rect_data.origin.y,
             rect_data.size.width,
-            rect_data.size.height
+            rect_data.size.height,
         ) {
             let mut paint = Paint::default();
             paint.set_color_rgba8(30, 110, 210, 255);
@@ -37,7 +38,8 @@ pub fn render_to_png(
         }
     }
 
-    pixmap.save_png(output_path)
+    pixmap
+        .save_png(output_path)
         .map_err(|err| format!("Failed to save PNG: {}", err))
 }
 

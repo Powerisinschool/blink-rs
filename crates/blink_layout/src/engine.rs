@@ -5,7 +5,12 @@ use crate::style::{Display, compute_style};
 use blink_css::CSSStyleSheet;
 use blink_dom::{Dom, DomNodeId, NodeKind};
 
-pub fn build_layout_tree(root_id: DomNodeId, dom: &Dom, stylesheet: &CSSStyleSheet, initial_space: ConstraintSpace) -> FragmentArena {
+pub fn build_layout_tree(
+    root_id: DomNodeId,
+    dom: &Dom,
+    stylesheet: &CSSStyleSheet,
+    initial_space: ConstraintSpace,
+) -> FragmentArena {
     let mut arena = FragmentArena::new();
 
     if let Some(root_fragment_id) = walk_node(root_id, dom, stylesheet, initial_space, &mut arena) {
@@ -32,8 +37,17 @@ fn make_absolute(arena: &mut FragmentArena, node_idx: usize, parent_x: f32, pare
     }
 }
 
-fn walk_node(node_id: DomNodeId, dom: &Dom, stylesheet: &CSSStyleSheet, space: ConstraintSpace, arena: &mut FragmentArena) -> Option<LayoutFragmentId> {
-    if matches!(dom.get_node(node_id).map(|n| &n.kind), Some(NodeKind::Text {})) {
+fn walk_node(
+    node_id: DomNodeId,
+    dom: &Dom,
+    stylesheet: &CSSStyleSheet,
+    space: ConstraintSpace,
+    arena: &mut FragmentArena,
+) -> Option<LayoutFragmentId> {
+    if matches!(
+        dom.get_node(node_id).map(|n| &n.kind),
+        Some(NodeKind::Text {})
+    ) {
         return None;
     }
 
@@ -46,15 +60,12 @@ fn walk_node(node_id: DomNodeId, dom: &Dom, stylesheet: &CSSStyleSheet, space: C
     let node_width = computed_style.width;
     let node_height = computed_style.height;
 
-    let initial_width = node_width.unwrap_or_else(|| match computed_style.display {
+    let initial_width = node_width.unwrap_or(match computed_style.display {
         Display::Inline => 0.0,
         _ => space.available_size.width,
     });
 
-    let node_size = PhysicalSize::new(
-        initial_width,
-        node_height.unwrap_or_default(),
-    );
+    let node_size = PhysicalSize::new(initial_width, node_height.unwrap_or_default());
 
     let bounding_rect = PhysicalRect::new(PhysicalOffset::default(), node_size);
     let fragment = LayoutFragment::new(Some(node_id), bounding_rect, computed_style);
@@ -88,7 +99,7 @@ fn walk_node(node_id: DomNodeId, dom: &Dom, stylesheet: &CSSStyleSheet, space: C
                     arena.fragments[child_id].rect.origin.y = child_y_cursor;
                     child_x_cursor = 0.0;
                     child_y_cursor += child_height;
-                },
+                }
                 Display::Inline => {
                     arena.fragments[child_id].rect.origin.x = child_x_cursor;
                     arena.fragments[child_id].rect.origin.y = child_y_cursor;
@@ -96,8 +107,8 @@ fn walk_node(node_id: DomNodeId, dom: &Dom, stylesheet: &CSSStyleSheet, space: C
                     if child_height > line_height {
                         line_height = child_height;
                     }
-                },
-                _ => {},
+                }
+                _ => {}
             }
 
             if first_child_fragment_id.is_none() {
@@ -121,7 +132,9 @@ fn walk_node(node_id: DomNodeId, dom: &Dom, stylesheet: &CSSStyleSheet, space: C
 
     let fragment_idx = (fragment_id.get() - 1) as usize;
 
-    if node_width.is_none() && matches!(arena.fragments[fragment_idx].style.display, Display::Inline) {
+    if node_width.is_none()
+        && matches!(arena.fragments[fragment_idx].style.display, Display::Inline)
+    {
         arena.fragments[fragment_idx].rect.size.width = child_x_cursor;
     }
 
