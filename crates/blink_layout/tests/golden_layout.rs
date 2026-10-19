@@ -10,6 +10,7 @@
 
 use blink_css::{CSSStyleSheet, parse_css_into_stylesheet};
 use blink_dom::{Dom, get_tag_name};
+use blink_html::parse_html;
 use blink_layout::engine::build_layout_tree;
 use blink_layout::fragment::FragmentArena;
 use blink_layout::geom::PhysicalSize;
@@ -18,24 +19,9 @@ use std::env;
 use std::fmt::Write;
 use std::fs;
 use std::path::PathBuf;
-use html5ever::ParseOpts;
-use html5ever::tendril::TendrilSink;
-use blink_html::HtmlDom;
 
 /// Viewport used for every golden test.
 const VIEWPORT: (f32, f32) = (800.0, 600.0);
-
-/// Parse HTML into a `Dom`.
-///
-/// TODO: replace the body with the exact calls `blink_shell/src/main.rs` makes to turn an
-/// HTML string into a `Dom`. This is the only function in this file that depends on the
-/// `blink_html` API.
-fn parse_html(html: &str) -> Dom {
-    html5ever::parse_document(HtmlDom::new(), ParseOpts::default())
-        .from_utf8()
-        .one(html.as_bytes()).0.into_inner()
-
-}
 
 fn layout_fixture(html: &str, css: &str) -> (Dom, FragmentArena) {
     let dom = parse_html(html);
@@ -103,7 +89,7 @@ fn dump_node(dom: &Dom, arena: &FragmentArena, idx: usize, depth: usize, out: &m
         fragment.rect.size.width,
         fragment.rect.size.height,
     )
-        .unwrap();
+    .unwrap();
 
     let mut child = fragment.first_child;
     while let Some(child_id) = child {
