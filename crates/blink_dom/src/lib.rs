@@ -1,6 +1,7 @@
-use markup5ever::{ns, Attribute, QualName};
+use markup5ever::{Attribute, QualName, ns};
 use std::collections::HashMap;
-use std::num::NonZeroU32;
+use std::fmt;
+use std::fmt::Formatter;
 
 const HTML_TAGS: &[&str] = &[
     "a", "abbr", "address", "area", "article", "aside", "audio", "b", "base", "bdi",
@@ -28,7 +29,7 @@ pub fn get_tag_index(name: &str) -> u8 {
 // O(1)
 pub fn get_tag_name(tag: u8) -> &'static str {
     if tag == 0 {
-        return "div";
+        return "document";
     }
 
     let array_idx = (tag - 1) as usize;
@@ -45,15 +46,50 @@ pub fn get_tag_name(tag: u8) -> &'static str {
 #[cfg(feature = "dense-core")]
 pub struct Dom {
     nodes: Vec<DomNode>,
-    pub node_attributes: Vec<Option<Box<[Attribute]>>>,
+    pub attribute_table: Vec<Option<Box<[Attribute]>>>,
     pub tag_registry: HashMap<u8, Box<QualName>>,
 }
+
+struct IndexedNode<'a> {
+    index: usize,
+    node: &'a DomNode,
+}
+
+impl<'a> fmt::Debug for IndexedNode<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        // Write the custom prefix, then forward formatting directly to the inner fragment
+        write!(f, "DomNode <{}>: {:?}", self.index, self.node)
+    }
+}
+
+impl fmt::Debug for Dom {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let indexed_list: Vec<IndexedNode> = self.nodes
+            .iter()
+            .enumerate()
+            .map(|(i, node)| IndexedNode {
+                index: i + 1,
+                node,
+            })
+            .collect();
+
+        f.debug_struct("Dom")
+            .field("nodes", &indexed_list)
+            .finish()
+    }
+}
+
+#[cfg(feature = "dense-core")]
+pub struct AttrTag;
+#[cfg(feature = "dense-core")]
+pub type AttrId = core::Id<AttrTag>;
 
 #[cfg(feature = "dense-core")]
 pub enum NodeKind {
     Element {
         tag: u8, // Easily fits the indices for the ~150 HTML tags
-        first_child: Option<NonZeroU32>
+        first_child: Option<DomNodeId>,
+        attrs: Option<AttrId>
     },
     Text {
         // text_id: u32
@@ -63,8 +99,42 @@ pub enum NodeKind {
     },
 }
 
+#[cfg(feature = "dense-core")]
+impl fmt::Debug for NodeKind {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            NodeKind::Element { tag, first_child, attrs } => {
+                let mut debug = f.debug_struct("Element");
+                debug.field("tag_str", &get_tag_name(*tag));
+
+                match first_child {
+                    Some(id) => debug.field("first_child", id),
+                    None => debug.field("first_child", &None::<DomNodeId>),
+                };
+
+                match attrs {
+                    Some(a) => debug.field("attrs", a),
+                    None => debug.field("attrs", &None::<AttrId>),
+                };
+
+                debug.finish()
+            }
+            NodeKind::Text { .. } => {
+                f.debug_struct("Text")
+                    .finish()
+            }
+            NodeKind::EmptyLeaf { tag } => {
+                f.debug_struct("EmptyLeaf")
+                    .field("tag_str", &get_tag_name(*tag))
+                    .finish()
+            }
+        }
+    }
+}
+
 // Memory-safe, arena-allocated DOM
 #[cfg(not(feature = "dense-core"))]
+#[derive(Debug)]
 pub struct Dom {
     nodes: Vec<DomNode>,
     pub tag_registry: HashMap<u8, Box<QualName>>,
@@ -74,7 +144,7 @@ pub struct Dom {
 pub enum NodeKind {
     Element {
         tag: u8, // Easily fits the indices for the ~150 HTML tags
-        first_child: Option<NonZeroU32>,
+        first_child: Option<DomNodeId>,
         attrs: Option<Box<[Attribute]>>,
     },
     Text {
@@ -85,10 +155,54 @@ pub enum NodeKind {
     },
 }
 
+#[cfg(not(feature = "dense-core"))]
+impl fmt::Debug for NodeKind {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            NodeKind::Element { tag, first_child, attrs } => {
+                f.debug_struct("Element")
+                    .field("tag_str", &get_tag_name(*tag))
+                    .field("first_child", first_child)
+                    .field("attrs", attrs)
+                    .finish()
+            }
+            NodeKind::Text { .. } => {
+                f.debug_struct("Text")
+                    .finish()
+            }
+            NodeKind::EmptyLeaf { tag } => {
+                f.debug_struct("EmptyLeaf")
+                    .field("tag_str", &get_tag_name(*tag))
+                    .finish()
+            }
+        }
+    }
+}
+
+pub struct DomNodeTag;
+pub type DomNodeId = core::Id<DomNodeTag>;
+
 pub struct DomNode {
-    parent: Option<NonZeroU32>,
-    next_sibling: Option<NonZeroU32>,
+    parent: Option<DomNodeId>,
+    next_sibling: Option<DomNodeId>,
     pub kind: NodeKind,
+}
+
+impl fmt::Debug for DomNode {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let mut debug = f.debug_struct("DomNode");
+        match &self.parent {
+            Some(id) => debug.field("parent", id),
+            None => debug.field("parent", &None::<DomNodeId>),
+        };
+        match &self.next_sibling {
+            Some(id) => debug.field("next_sibling", id),
+            None => debug.field("next_sibling", &None::<DomNodeId>),
+        };
+        debug
+            .field("kind", &self.kind)
+            .finish()
+    }
 }
 
 // ---------------------------------------------------------
@@ -134,7 +248,7 @@ impl Dom {
     //     NonZeroU32::new((node_idx as u32) + 1).unwrap()
     // }
 
-    pub fn add_text(&mut self, _text_id: u32) -> NonZeroU32 {
+    pub fn add_text(&mut self, _text_id: u32) -> DomNodeId {
         let node_idx = self.nodes.len();
         self.nodes.push(DomNode {
             parent: None,
@@ -143,32 +257,32 @@ impl Dom {
                 // text_id
             },
         });
-        NonZeroU32::new((node_idx as u32) + 1).unwrap()
+        DomNodeId::from_usize(node_idx).unwrap()
     }
 
-    pub fn set_parent(&mut self, node: NonZeroU32, parent: NonZeroU32) {
+    pub fn set_parent(&mut self, node: DomNodeId, parent: DomNodeId) {
         let idx = (node.get() - 1) as usize;
         self.nodes[idx].parent = Some(parent);
     }
 
-    pub fn set_first_child(&mut self, parent: NonZeroU32, child: Option<NonZeroU32>) {
+    pub fn set_first_child(&mut self, parent: DomNodeId, child: Option<DomNodeId>) {
         let idx = (parent.get() - 1) as usize;
         if let NodeKind::Element { ref mut first_child, .. } = self.nodes[idx].kind {
             *first_child = child;
         }
     }
 
-    pub fn set_next_sibling(&mut self, node: NonZeroU32, sibling: Option<NonZeroU32>) {
-        let idx = (node.get() - 1) as usize;
+    pub fn set_next_sibling(&mut self, node: DomNodeId, sibling: Option<DomNodeId>) {
+        let idx = node.get_index();
         self.nodes[idx].next_sibling = sibling;
     }
 
-    pub fn get_parent(&self, id: NonZeroU32) -> Option<NonZeroU32> {
-        let idx = (id.get() - 1) as usize;
+    pub fn get_parent(&self, id: DomNodeId) -> Option<DomNodeId> {
+        let idx = id.get_index();
         self.nodes[idx].parent
     }
 
-    pub fn get_first_child(&self, parent: NonZeroU32) -> Option<NonZeroU32> {
+    pub fn get_first_child(&self, parent: DomNodeId) -> Option<DomNodeId> {
         let idx = (parent.get() - 1) as usize;
         if let NodeKind::Element { first_child, .. } = self.nodes[idx].kind {
             first_child
@@ -177,12 +291,12 @@ impl Dom {
         }
     }
 
-    pub fn get_next_sibling(&self, node: NonZeroU32) -> Option<NonZeroU32> {
+    pub fn get_next_sibling(&self, node: DomNodeId) -> Option<DomNodeId> {
         let idx = (node.get() - 1) as usize;
         self.nodes[idx].next_sibling
     }
 
-    pub fn get_tag(&self, id: NonZeroU32) -> Option<u8> {
+    pub fn get_tag(&self, id: DomNodeId) -> Option<u8> {
         let idx = (id.get() - 1) as usize;
         match self.nodes[idx].kind {
             NodeKind::Element { tag, .. } => Some(tag),
@@ -195,13 +309,13 @@ impl Dom {
         self.nodes.len()
     }
     
-    pub fn get_node(&self, id: NonZeroU32) -> Option<&DomNode> {
+    pub fn get_node(&self, id: DomNodeId) -> Option<&DomNode> {
         let idx = (id.get() - 1) as usize;
         self.nodes.get(idx)
     }
 
-    pub fn get_root_node_id(&self) -> NonZeroU32 {
-        NonZeroU32::new(1).unwrap()
+    pub fn get_root_node_id(&self) -> DomNodeId {
+        DomNodeId::from_u32(1).unwrap()
     }
 
     pub fn ensure_tag_registered(&mut self, tag: u8) {
@@ -222,50 +336,71 @@ impl Dom {
     pub fn new() -> Self {
         Self {
             nodes: Vec::with_capacity(512),
-            node_attributes: Vec::with_capacity(512),
+            attribute_table: Vec::with_capacity(512),
             tag_registry: HashMap::new(),
         }
     }
 
-    pub fn add_element(&mut self, tag: u8, attrs: Option<Box<[Attribute]>>) -> NonZeroU32 {
+    pub fn add_element(&mut self, tag: u8, attrs: Option<Box<[Attribute]>>) -> DomNodeId {
         self.ensure_tag_registered(tag);
         let node_idx = self.nodes.len();
 
-        if node_idx == usize::MAX {
-            panic!("Maximum number of nodes reached");
-        }
-
-        match get_tag_name(tag) {
-            "br" | "hr" => self.nodes.push(DomNode {
-                parent: None,
-                next_sibling: None,
-                kind: NodeKind::EmptyLeaf {
-                    tag,
-                },
-            }),
+        let kind = match get_tag_name(tag) {
+            "br" | "hr" => NodeKind::EmptyLeaf { tag },
             _ => {
-                self.nodes.push(DomNode {
-                    parent: None,
-                    next_sibling: None,
-                    kind: NodeKind::Element {
-                        tag,
-                        first_child: None,
-                    },
+                let attrs = attrs.filter(|a| !a.is_empty()).map(|a| {
+                    self.attribute_table.push(Some(a));
+                    AttrId::from_usize(self.attribute_table.len() - 1).unwrap()
                 });
-                self.node_attributes.push(attrs);
+                NodeKind::Element {
+                    tag,
+                    first_child: None,
+                    attrs,
+                }
             },
+        };
+        self.nodes.push(DomNode { parent: None, next_sibling: None, kind });
+        DomNodeId::from_usize(node_idx).unwrap()
+    }
+
+    pub fn set_attributes(&mut self, id: DomNodeId, attrs: Option<Box<[Attribute]>>) -> Result<(), String> {
+        if attrs.is_none() {
+            return Ok(());
         }
 
-        NonZeroU32::new((node_idx as u32) + 1).unwrap()
+        let node = match self.nodes.get(id.get_index()) {
+            Some(n) => n,
+            None => return Err("Node not found".into()),
+        };
+
+        let attrs_index = match node.kind {
+            NodeKind::Element { attrs: Some(attrs_id), .. } => Some(attrs_id.get_index()),
+            _ => None
+        };
+
+        match attrs_index {
+            Some(index) => {
+                if let Some(existing) = self.attribute_table.get_mut(index) {
+                    *existing = attrs;
+                } else {
+                    return Err("Attribute ID points to a non-existent table entry".into());
+                }
+            }
+            None => {
+                self.attribute_table.push(attrs);
+            }
+        }
+
+        Ok(())
     }
 
-    pub fn set_attributes(&mut self, index: NonZeroU32, attrs: Option<Box<[Attribute]>>) {
-        self.node_attributes[(index.get() - 1) as usize] = attrs;
-    }
-
-    pub fn get_attributes(&self, index: NonZeroU32) -> Option<&[Attribute]> {
-        let attrs = self.node_attributes.get((index.get() - 1) as usize).map(|attrs| attrs.as_ref())??;
-        Some(attrs.as_ref())
+    pub fn get_attributes(&self, id: DomNodeId) -> Option<&[Attribute]> {
+        match &self.nodes.get(id.get_index())?.kind {
+            NodeKind::Element { attrs: Some(attrs_id), .. } => {
+                self.attribute_table.get(attrs_id.get_index())?.as_deref()
+            },
+            _ => None,
+        }
     }
 }
 
@@ -278,7 +413,7 @@ impl Dom {
         }
     }
 
-    pub fn add_element(&mut self, tag: u8, attrs: Option<Box<[Attribute]>>) -> NonZeroU32 {
+    pub fn add_element(&mut self, tag: u8, attrs: Option<Box<[Attribute]>>) -> DomNodeId {
         self.ensure_tag_registered(tag);
         let node_idx = self.nodes.len();
 
@@ -307,11 +442,11 @@ impl Dom {
             },
         }
 
-        NonZeroU32::new((node_idx as u32) + 1).unwrap()
+        DomNodeId::from_u32((node_idx as u32) + 1).unwrap()
     }
 
-    pub fn set_attributes(&mut self, index: NonZeroU32, _attrs: Option<Box<[Attribute]>>) {
-        let node_kind = &mut self.nodes[(index.get() - 1) as usize].kind;
+    pub fn set_attributes(&mut self, index: DomNodeId, _attrs: Option<Box<[Attribute]>>) {
+        let node_kind = &mut self.nodes[index.get_index()].kind;
 
         match node_kind {
             NodeKind::Element { attrs, .. } => {
@@ -321,8 +456,8 @@ impl Dom {
         }
     }
 
-    pub fn get_attributes(&self, index: NonZeroU32) -> Option<&[Attribute]> {
-        let node = self.nodes.get((index.get() - 1) as usize)?;
+    pub fn get_attributes(&self, index: DomNodeId) -> Option<&[Attribute]> {
+        let node = self.nodes.get(index.get_index())?;
 
         match &node.kind {
             NodeKind::Element { attrs, .. } => {

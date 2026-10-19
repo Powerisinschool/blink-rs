@@ -7,3 +7,4 @@ edition = "2024"
 markup5ever.workspace = true
 blink_dom = { path = "../blink_dom", features = ["dense-core"] }
 blink_css = { path = "../blink_css" }
+core = { path = "../core" }

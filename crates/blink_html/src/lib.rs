@@ -1,23 +1,22 @@
-use blink_dom::{Dom, get_tag_index};
+use blink_dom::{Dom, DomNodeId, get_tag_index};
 use html5ever::interface::{ElementFlags, NodeOrText, QuirksMode, TreeSink};
 use html5ever::tendril::StrTendril;
 use html5ever::{Attribute, ExpandedName, QualName};
 use std::borrow::Cow;
 use std::cell::RefCell;
-use std::num::NonZeroU32;
 
 pub struct HtmlDom(pub RefCell<Dom>);
 
 impl HtmlDom {
     pub fn new() -> Self {
-        let mut dom = blink_dom::Dom::new();
+        let mut dom = Dom::new();
         dom.add_element(0, None);
         Self(RefCell::new(dom))
     }
 }
 
 impl TreeSink for HtmlDom {
-    type Handle = NonZeroU32;
+    type Handle = DomNodeId;
     type Output = Self;
     type ElemName<'a> = ExpandedName<'a> where Self: 'a;
 
@@ -30,7 +29,7 @@ impl TreeSink for HtmlDom {
     }
 
     fn get_document(&self) -> Self::Handle {
-        NonZeroU32::new(1).unwrap()
+        DomNodeId::from_u32(1).unwrap()
     }
 
     fn elem_name<'a>(&'a self, target: &'a Self::Handle) -> ExpandedName<'a> {
@@ -111,8 +110,38 @@ impl TreeSink for HtmlDom {
         // todo!()
     }
 
-    fn append_before_sibling(&self, _sibling: &Self::Handle, _new_node: NodeOrText<Self::Handle>) {
-        // todo!()
+    fn append_before_sibling(&self, sibling: &Self::Handle, new_node: NodeOrText<Self::Handle>) {
+        let mut dom = self.0.borrow_mut();
+
+        let new_handle = match new_node {
+            NodeOrText::AppendNode(node) => node,
+            NodeOrText::AppendText(text) => {
+                let text_id = text.len() as u32;
+                dom.add_text(text_id)
+            }
+        };
+
+        let parent_opt = dom.get_parent(*sibling);
+        if let Some(parent) = parent_opt {
+            dom.set_parent(new_handle, parent);
+
+            if let Some(first) = dom.get_first_child(parent) {
+                if first == *sibling {
+                    dom.set_next_sibling(new_handle, Some(*sibling));
+                    dom.set_first_child(parent, Some(new_handle));
+                } else {
+                    let mut curr = first;
+                    while let Some(next) = dom.get_next_sibling(curr) {
+                        if next == *sibling {
+                            dom.set_next_sibling(new_handle, Some(*sibling));
+                            dom.set_next_sibling(curr, Some(new_handle));
+                            break;
+                        }
+                        curr = next;
+                    }
+                }
+            }
+        }
     }
 
     fn add_attrs_if_missing(&self, _target: &Self::Handle, _attrs: Vec<Attribute>) {
@@ -126,9 +155,10 @@ impl TreeSink for HtmlDom {
             if let Some(first) = dom.get_first_child(p) {
                 if first == *target {
                     let next = dom.get_next_sibling(*target);
-                    if let Some(n) = next {
-                        dom.set_first_child(p, Some(n));
-                    }
+                    // if let Some(n) = next {
+                    //     dom.set_first_child(p, Some(n));
+                    // }
+                    dom.set_first_child(p, next);
                 } else {
                     let mut curr = first;
                     while let Some(next) = dom.get_next_sibling(curr) {

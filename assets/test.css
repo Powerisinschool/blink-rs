@@ -1,0 +1,71 @@
+div#app-root {
+    width: 760px;
+    /* Height is left auto to test bottom-up shrink-wrapping */
+}
+
+.header {
+    width: 760px;
+    height: 80px;
+    display: block;
+}
+
+.logo {
+    width: 150px;
+    height: 40px;
+    display: inline;
+}
+
+.nav-item {
+    width: 80px;
+    height: 40px;
+    display: inline;
+}
+
+.hidden-element {
+    width: 500px;
+    height: 500px;
+    display: none; /* Should completely disappear from the layout tree */
+}
+
+.main-layout {
+    display: block;
+    /* Width inherits from app-root, height is auto */
+}
+
+/*
+ * Testing Inline flow for columns.
+ * Sidebar and Content should render side-by-side on the x-axis.
+ */
+.sidebar {
+    width: 200px;
+    height: 500px;
+    display: inline;
+}
+
+.content {
+    width: 540px;
+    height: 500px;
+    display: inline;
+}
+
+.menu-link {
+    width: 180px;
+    height: 40px;
+    display: block;
+}
+
+/* Specificity override test */
+div.sidebar .active {
+    height: 60px;
+}
+
+.article-card {
+    width: 500px;
+    height: 120px;
+    display: block;
+}
+
+/* Descendant selector override */
+div.content .featured {
+    height: 200px;
+}

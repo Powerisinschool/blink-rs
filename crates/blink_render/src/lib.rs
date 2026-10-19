@@ -1,5 +1,5 @@
-use tiny_skia::{Color, FillRule, Paint, PathBuilder, Pixmap, Rect, Stroke, Transform};
 use blink_layout::fragment::FragmentArena;
+use tiny_skia::{Color, Paint, PathBuilder, Pixmap, Rect, Stroke, Transform};
 
 pub fn render_to_png(
     arena: &FragmentArena,
@@ -42,6 +42,4 @@ pub fn render_to_png(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-}
+mod tests {}

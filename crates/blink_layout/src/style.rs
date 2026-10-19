@@ -1,7 +1,6 @@
-use std::num::NonZeroU32;
-use markup5ever::local_name;
 use blink_css::{CSSStyleRule, CSSStyleSheet, Selector};
-use blink_dom::{get_tag_name, Dom, NodeKind};
+use blink_dom::{Dom, DomNodeId, NodeKind, get_tag_name};
+use markup5ever::local_name;
 
 #[derive(Debug, Clone)]
 pub enum Display {
@@ -27,13 +26,13 @@ impl ComputedStyle {
     }
 }
 
-pub fn compute_style(node_id: NonZeroU32, dom: &Dom, stylesheet: &CSSStyleSheet) -> ComputedStyle {
+pub fn compute_style(node_id: DomNodeId, dom: &Dom, stylesheet: &CSSStyleSheet) -> ComputedStyle {
     let mut rules = get_matching_rules(node_id, dom, stylesheet);
 
     cascade_properties(&mut rules)
 }
 
-fn get_matching_rules<'a>(node_id: NonZeroU32, dom: &Dom, stylesheet: &'a CSSStyleSheet) -> Vec<&'a CSSStyleRule> {
+fn get_matching_rules<'a>(node_id: DomNodeId, dom: &Dom, stylesheet: &'a CSSStyleSheet) -> Vec<&'a CSSStyleRule> {
     let mut matching_rules: Vec<&CSSStyleRule> = vec![];
     for rule in &stylesheet.rules {
         if matches_selector(node_id, dom, rule) {
@@ -44,11 +43,11 @@ fn get_matching_rules<'a>(node_id: NonZeroU32, dom: &Dom, stylesheet: &'a CSSSty
     matching_rules
 }
 
-fn matches_selector(node_id: NonZeroU32, dom: &Dom, rule: &CSSStyleRule) -> bool {
+fn matches_selector(node_id: DomNodeId, dom: &Dom, rule: &CSSStyleRule) -> bool {
     match_parts(node_id, dom, &rule.selector)
 }
 
-fn match_parts(node_id: NonZeroU32, dom: &Dom, parts: &[Selector]) -> bool {
+fn match_parts(node_id: DomNodeId, dom: &Dom, parts: &[Selector]) -> bool {
     if parts.is_empty() { return true; }
 
     // Search for the last Descendant combinator from the right
@@ -78,7 +77,7 @@ fn match_parts(node_id: NonZeroU32, dom: &Dom, parts: &[Selector]) -> bool {
     }
 }
 
-fn match_compound(node_id: NonZeroU32, dom: &Dom, parts: &[Selector]) -> bool {
+fn match_compound(node_id: DomNodeId, dom: &Dom, parts: &[Selector]) -> bool {
     for part in parts {
         match part {
             Selector::Tag(target_tag) => {
@@ -162,8 +161,8 @@ fn parse_px_value(mut val: &str) -> Option<f32> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use markup5ever::{ns, Attribute, QualName, LocalName};
     use blink_css::parse_css_into_stylesheet;
+    use markup5ever::{Attribute, LocalName, QualName, ns};
 
     const DIV_TAG_INDEX: u8 = 29;
     const P_TAG_INDEX: u8 = 73;
@@ -326,5 +325,14 @@ mod tests {
         assert!(matches!(computed.display, Display::Block), "Class rule should override Tag rule for display");
 
         assert_eq!(computed.width, Some(300.0), "ID rule should have highest specificity and win the width cascade");
+    }
+
+    #[test]
+    fn attributes_survive_text_nodes() {
+        let mut dom = Dom::new();
+        let div = blink_dom::get_tag_index("div");
+        let _text = dom.add_text(0);
+        let el = dom.add_element(div, Some(vec![make_attr("id", "x")].into_boxed_slice()));
+        assert!(dom.get_attributes(el).unwrap().iter().any(|a| a.value.as_ref() == "x"));
     }
 }
