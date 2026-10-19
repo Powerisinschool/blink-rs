@@ -15,3 +15,15 @@ pub struct PhysicalRect {
     pub origin: PhysicalOffset,
     pub size: PhysicalSize,
 }
+
+impl PhysicalSize {
+    pub fn new(width: f32, height: f32) -> Self {
+        Self { width, height }
+    }
+}
+
+impl PhysicalRect {
+    pub fn new(origin: PhysicalOffset, size: PhysicalSize) -> Self {
+        Self { origin, size }
+    }
+}

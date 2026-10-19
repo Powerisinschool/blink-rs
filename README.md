@@ -70,7 +70,7 @@ Establish a unidirectional, non-reactive pipeline mapping text to a rasterized i
 - [x] Build a style cascading engine matching selector specificities.
 
 
-- [ ] Write a simplified box-model layout calculator providing physical boundaries for Block and Inline text flows.
+- [x] Write a simplified box-model layout calculator providing physical boundaries for Block and Inline text flows.
 
 
 - [ ] Bind layout outputs to drawing coordinates for static frame generation.
