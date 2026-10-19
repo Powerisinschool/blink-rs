@@ -7,3 +7,5 @@ markup5ever = "0.40.0"
 html5ever = "0.40.1"
 
 cssparser = "0.38.0"
+
+tiny-skia = "0.12.0"
