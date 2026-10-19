@@ -3,7 +3,7 @@ use crate::geom::{PhysicalOffset, PhysicalRect, PhysicalSize};
 use crate::space::ConstraintSpace;
 use crate::style::{Display, compute_style};
 use blink_css::CSSStyleSheet;
-use blink_dom::{Dom, DomNodeId};
+use blink_dom::{Dom, DomNodeId, NodeKind};
 
 pub fn build_layout_tree(root_id: DomNodeId, dom: &Dom, stylesheet: &CSSStyleSheet, initial_space: ConstraintSpace) -> FragmentArena {
     let mut arena = FragmentArena::new();
@@ -33,6 +33,10 @@ fn make_absolute(arena: &mut FragmentArena, node_idx: usize, parent_x: f32, pare
 }
 
 fn walk_node(node_id: DomNodeId, dom: &Dom, stylesheet: &CSSStyleSheet, space: ConstraintSpace, arena: &mut FragmentArena) -> Option<LayoutFragmentId> {
+    if matches!(dom.get_node(node_id).map(|n| &n.kind), Some(NodeKind::Text {})) {
+        return None;
+    }
+
     let computed_style = compute_style(node_id, dom, stylesheet);
 
     if matches!(computed_style.display, Display::None) {
@@ -65,8 +69,11 @@ fn walk_node(node_id: DomNodeId, dom: &Dom, stylesheet: &CSSStyleSheet, space: C
     let mut child_y_cursor = 0.0;
     let mut line_height = 0.0;
 
+    let child_space = ConstraintSpace {
+        available_size: PhysicalSize::new(initial_width, space.available_size.height),
+    };
     while let Some(dom_child) = current_dom_child {
-        if let Some(fragment_child_id) = walk_node(dom_child, dom, stylesheet, space, arena) {
+        if let Some(fragment_child_id) = walk_node(dom_child, dom, stylesheet, child_space, arena) {
             let child_id = (fragment_child_id.get() - 1) as usize;
 
             let child_width = arena.fragments[child_id].rect.size.width;

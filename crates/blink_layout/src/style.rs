@@ -29,7 +29,7 @@ impl ComputedStyle {
 pub fn compute_style(node_id: DomNodeId, dom: &Dom, stylesheet: &CSSStyleSheet) -> ComputedStyle {
     let mut rules = get_matching_rules(node_id, dom, stylesheet);
 
-    cascade_properties(&mut rules)
+    cascade_properties(&mut rules, default_display(node_id, dom))
 }
 
 fn get_matching_rules<'a>(node_id: DomNodeId, dom: &Dom, stylesheet: &'a CSSStyleSheet) -> Vec<&'a CSSStyleRule> {
@@ -120,10 +120,22 @@ fn match_compound(node_id: DomNodeId, dom: &Dom, parts: &[Selector]) -> bool {
     true
 }
 
-fn cascade_properties(matched_rules: &mut Vec<&CSSStyleRule>) -> ComputedStyle {
+fn default_display(node_id: DomNodeId, dom: &Dom) -> Display {
+    match dom.get_node(node_id).map(|n| &n.kind) {
+        Some(NodeKind::Element { tag, .. }) | Some(NodeKind::EmptyLeaf { tag, .. }) => {
+            match get_tag_name(*tag) {
+                "head" | "script" | "style" | "title" | "meta" | "link" => Display::None,
+                "document" | "html" | "body" | "div" | "p" | "section" | "ul" | "li" => Display::Block,
+                _ => Display::Inline,
+            }
+        }
+        _ => Display::Inline,
+    }
+}
+
+fn cascade_properties(matched_rules: &mut Vec<&CSSStyleRule>, mut display: Display) -> ComputedStyle {
     matched_rules.sort_by(|a, b| a.specificity().cmp(&b.specificity()));
 
-    let mut display = Display::Inline;
     let mut width = None;
     let mut height = None;
 
@@ -163,6 +175,7 @@ mod tests {
     use super::*;
     use blink_css::parse_css_into_stylesheet;
     use markup5ever::{Attribute, LocalName, QualName, ns};
+    use blink_dom::get_tag_index;
 
     const DIV_TAG_INDEX: u8 = 29;
     const P_TAG_INDEX: u8 = 73;
@@ -328,10 +341,21 @@ mod tests {
     }
 
     #[test]
-    fn attributes_survive_text_nodes() {
+    fn test_attributes_survive_text_nodes() {
         let mut dom = Dom::new();
         let div = blink_dom::get_tag_index("div");
         let _text = dom.add_text(0);
+        let el = dom.add_element(div, Some(vec![make_attr("id", "x")].into_boxed_slice()));
+        assert!(dom.get_attributes(el).unwrap().iter().any(|a| a.value.as_ref() == "x"));
+    }
+
+    #[test]
+    fn test_attributes_survive_br_and_text() {
+        let mut dom = Dom::new();
+        let br = get_tag_index("br");
+        let div = get_tag_index("div");
+        dom.add_element(br, None);
+        dom.add_text(0);
         let el = dom.add_element(div, Some(vec![make_attr("id", "x")].into_boxed_slice()));
         assert!(dom.get_attributes(el).unwrap().iter().any(|a| a.value.as_ref() == "x"));
     }
