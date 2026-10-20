@@ -38,7 +38,7 @@ impl TreeSink for HtmlDom {
     }
 
     fn get_document(&self) -> Self::Handle {
-        DomNodeId::from_u32(1).unwrap()
+        self.0.borrow().get_root_node_id()
     }
 
     fn elem_name<'a>(&'a self, target: &'a Self::Handle) -> ExpandedName<'a> {

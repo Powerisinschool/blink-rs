@@ -99,7 +99,7 @@ fn match_compound(node_id: DomNodeId, dom: &Dom, parts: &[Selector]) -> bool {
                         let tag_name = get_tag_name(*tag);
                         target_tag == tag_name
                     }
-                    NodeKind::Text {} => false,
+                    NodeKind::Free | NodeKind::Text {} => false,
                 };
                 if !is_match {
                     return false;
