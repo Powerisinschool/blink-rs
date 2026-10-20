@@ -29,7 +29,9 @@ impl<T> Eq for GenId<T> {}
 impl<T> GenId<T> {
     pub fn new(slot: usize, generation: u16) -> Option<Self> {
         let index = slot.checked_add(1)?;
-        if index > MAX_INDEX || (generation as u32) >= GEN_DEAD { return None };
+        if index > MAX_INDEX || (generation as u32) >= GEN_DEAD {
+            return None;
+        };
 
         Some(Self {
             raw: NonZeroU32::new(((index as u32) << GEN_BITS) | (generation as u32))?,
@@ -37,8 +39,12 @@ impl<T> GenId<T> {
         })
     }
 
-    pub fn slot(self) -> usize { (self.raw.get() >> GEN_BITS) as usize - 1 }
-    pub fn generation(self) -> u16 { (self.raw.get() & GEN_MASK) as u16 }
+    pub fn slot(self) -> usize {
+        (self.raw.get() >> GEN_BITS) as usize - 1
+    }
+    pub fn generation(self) -> u16 {
+        (self.raw.get() & GEN_MASK) as u16
+    }
 }
 
 impl<T> fmt::Debug for GenId<T> {
