@@ -1,8 +1,8 @@
+use blink_core::generator::GEN_DEAD;
 use markup5ever::{Attribute, QualName, ns};
 use std::collections::HashMap;
 use std::fmt;
 use std::fmt::Formatter;
-use blink_core::generator::GEN_DEAD;
 
 const HTML_TAGS: &[&str] = &[
     "a",
@@ -363,7 +363,7 @@ impl Dom {
         id: DomNodeId,
         new: Option<Box<[Attribute]>>,
     ) -> Result<(), String> {
-        if matches!(new, None) {
+        if new.is_none() {
             return Ok(());
         }
 
@@ -596,6 +596,37 @@ mod tests {
         }
         assert!(dom.free(id)); // bumps to GEN_DEAD: retired
         assert_ne!(dom.add_element(div, None).slot(), slot);
+    }
+
+    #[test]
+    fn stale_handles_cannot_mutate_reused_nodes() {
+        let mut dom = Dom::new();
+        let parent = dom.add_element(get_tag_index("div"), None);
+        let stale = dom.add_element(get_tag_index("span"), None);
+
+        assert!(dom.free(stale));
+
+        let replacement = dom.add_element(get_tag_index("section"), None);
+        assert_eq!(stale.slot(), replacement.slot());
+        assert_ne!(stale, replacement);
+
+        // A stale node ID must not modify its replacement's parent.
+        dom.set_parent(stale, parent);
+        assert_eq!(dom.get_parent(replacement), None);
+
+        // Nor its next sibling.
+        dom.set_next_sibling(stale, Some(parent));
+        assert_eq!(dom.get_next_sibling(replacement), None);
+
+        // Nor the replacement's first child when used as a parent ID.
+        dom.set_first_child(stale, Some(parent));
+        assert_eq!(dom.get_first_child(replacement), None);
+
+        // Attribute mutation must reject stale IDs.
+        assert!(dom.set_attributes(stale, Some(Box::new([]))).is_err());
+
+        // The replacement itself must remain valid and unchanged.
+        assert_eq!(dom.get_tag(replacement), Some(get_tag_index("section")));
     }
 
     #[test]
