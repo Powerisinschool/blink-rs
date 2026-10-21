@@ -1,3 +1,4 @@
+use blink_core::generator::GEN_DEAD;
 use markup5ever::{Attribute, QualName, ns};
 use std::collections::HashMap;
 use std::fmt;
@@ -139,11 +140,11 @@ pub fn get_tag_name(tag: u8) -> &'static str {
     }
 }
 
-// A proposed, more memory-efficient representation of the DOM
-#[cfg(feature = "dense-core")]
 pub struct Dom {
     nodes: Vec<DomNode>,
+    free_slots: Vec<u32>,
     pub attribute_table: Vec<Option<Box<[Attribute]>>>,
+    free_attrs: Vec<AttrId>,
     pub tag_registry: HashMap<u8, Box<QualName>>,
 }
 
@@ -172,12 +173,9 @@ impl fmt::Debug for Dom {
     }
 }
 
-#[cfg(feature = "dense-core")]
 pub struct AttrTag;
-#[cfg(feature = "dense-core")]
-pub type AttrId = blink_core::Id<AttrTag>;
+pub type AttrId = blink_core::base::Id<AttrTag>;
 
-#[cfg(feature = "dense-core")]
 pub enum NodeKind {
     Element {
         tag: u8, // Easily fits the indices for the ~150 HTML tags
@@ -191,9 +189,9 @@ pub enum NodeKind {
         tag: u8, // Easily fits the indices for the ~150 HTML tags
         attrs: Option<AttrId>,
     },
+    Free,
 }
 
-#[cfg(feature = "dense-core")]
 impl fmt::Debug for NodeKind {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
@@ -228,62 +226,18 @@ impl fmt::Debug for NodeKind {
 
                 debug.field("tag_str", &get_tag_name(*tag)).finish()
             }
-        }
-    }
-}
-
-// Memory-safe, arena-allocated DOM
-#[cfg(not(feature = "dense-core"))]
-#[derive(Debug)]
-pub struct Dom {
-    nodes: Vec<DomNode>,
-    pub tag_registry: HashMap<u8, Box<QualName>>,
-}
-
-#[cfg(not(feature = "dense-core"))]
-pub enum NodeKind {
-    Element {
-        tag: u8, // Easily fits the indices for the ~150 HTML tags
-        first_child: Option<DomNodeId>,
-        attrs: Option<Box<[Attribute]>>,
-    },
-    Text {
-        // text_id: u32
-    },
-    EmptyLeaf {
-        tag: u8, // Easily fits the indices for the ~150 HTML tags
-    },
-}
-
-#[cfg(not(feature = "dense-core"))]
-impl fmt::Debug for NodeKind {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            NodeKind::Element {
-                tag,
-                first_child,
-                attrs,
-            } => f
-                .debug_struct("Element")
-                .field("tag_str", &get_tag_name(*tag))
-                .field("first_child", first_child)
-                .field("attrs", attrs)
-                .finish(),
-            NodeKind::Text { .. } => f.debug_struct("Text").finish(),
-            NodeKind::EmptyLeaf { tag } => f
-                .debug_struct("EmptyLeaf")
-                .field("tag_str", &get_tag_name(*tag))
-                .finish(),
+            NodeKind::Free => f.debug_struct("Free").finish(),
         }
     }
 }
 
 pub struct DomNodeTag;
-pub type DomNodeId = blink_core::Id<DomNodeTag>;
+pub type DomNodeId = blink_core::generator::GenId<DomNodeTag>;
 
 pub struct DomNode {
     parent: Option<DomNodeId>,
     next_sibling: Option<DomNodeId>,
+    generation: u16,
     pub kind: NodeKind,
 }
 
@@ -305,105 +259,173 @@ impl fmt::Debug for DomNode {
 // ---------------------------------------------------------
 // Unified API Implementation
 // ---------------------------------------------------------
+impl Default for Dom {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Dom {
-    // pub fn new() -> Self {
-    //     Self {
-    //         nodes: Vec::new(),
-    //         tag_registry: Default::default(),
-    //     }
-    // }
+    pub fn new() -> Self {
+        Self {
+            nodes: Vec::with_capacity(512),
+            free_slots: Vec::with_capacity(128),
+            attribute_table: Vec::with_capacity(512),
+            free_attrs: Vec::with_capacity(128),
+            tag_registry: HashMap::new(),
+        }
+    }
 
-    // pub fn add_element(&mut self, tag: u8, attrs: Option<Box<[Attribute]>>) -> NonZeroU32 {
-    //     self.ensure_tag_registered(tag);
-    //     let node_idx = self.nodes.len();
-    //
-    //     if node_idx == usize::MAX {
-    //         panic!("Maximum number of nodes reached");
-    //     }
-    //
-    //     match get_tag_name(tag) {
-    //         "br" | "hr" => self.nodes.push(DomNode {
-    //             parent: None,
-    //             next_sibling: None,
-    //             kind: NodeKind::EmptyLeaf {
-    //                 tag,
-    //             },
-    //         }),
-    //         _ => {
-    //             self.nodes.push(DomNode {
-    //                 parent: None,
-    //                 next_sibling: None,
-    //                 kind: NodeKind::Element {
-    //                     tag,
-    //                     first_child: None,
-    //                 },
-    //             });
-    //             self.add_attributes(attrs);
-    //         },
-    //     }
-    //
-    //     NonZeroU32::new((node_idx as u32) + 1).unwrap()
-    // }
-
-    pub fn add_text(&mut self, _text_id: u32) -> DomNodeId {
+    pub fn add_element(&mut self, tag: u8, attrs: Option<Box<[Attribute]>>) -> DomNodeId {
+        self.ensure_tag_registered(tag);
         let node_idx = self.nodes.len();
+
+        let attrs = attrs
+            .filter(|a| !a.is_empty())
+            .map(|a| {
+                if let Some(new_attr_id) = self.alloc_attrs(None) {
+                    self.attribute_table[new_attr_id.get_index()] = Some(a);
+                    Some(new_attr_id)
+                } else {
+                    None
+                }
+            })
+            .unwrap_or_default();
+
+        let mut kind = match get_tag_name(tag) {
+            "br" | "hr" => NodeKind::EmptyLeaf { tag, attrs },
+            _ => NodeKind::Element {
+                tag,
+                first_child: None,
+                attrs,
+            },
+        };
+
+        kind = match self.use_free_slot(kind) {
+            Ok(id) => return id,
+            Err(kind) => kind,
+        };
+
         self.nodes.push(DomNode {
             parent: None,
             next_sibling: None,
-            kind: NodeKind::Text {
-                // text_id
-            },
+            generation: 0,
+            kind,
         });
-        DomNodeId::from_usize(node_idx).unwrap()
+        DomNodeId::new(node_idx, 0).unwrap()
     }
 
-    pub fn set_parent(&mut self, node: DomNodeId, parent: DomNodeId) {
-        let idx = (node.get() - 1) as usize;
-        self.nodes[idx].parent = Some(parent);
+    pub fn add_text(&mut self, _text_id: u32) -> DomNodeId {
+        let mut kind = NodeKind::Text {
+            // text_id
+        };
+
+        kind = match self.use_free_slot(kind) {
+            Ok(id) => return id,
+            Err(kind) => kind,
+        };
+
+        let node_idx = self.nodes.len();
+
+        self.nodes.push(DomNode {
+            parent: None,
+            next_sibling: None,
+            generation: 0,
+            kind,
+        });
+        DomNodeId::new(node_idx, 0).unwrap()
     }
 
-    pub fn set_first_child(&mut self, parent: DomNodeId, child: Option<DomNodeId>) {
-        let idx = (parent.get() - 1) as usize;
-        if let NodeKind::Element {
-            ref mut first_child,
+    pub fn set_parent(&mut self, node: DomNodeId, parent: DomNodeId) -> Result<(), String> {
+        if self.live(parent).is_none() {
+            return Err("parent node is not valid".into());
+        }
+
+        if let Some(n) = self.live_mut(node) {
+            n.parent = Some(parent);
+            Ok(())
+        } else {
+            Err("given node is not valid".into())
+        }
+    }
+
+    pub fn set_first_child(
+        &mut self,
+        parent: DomNodeId,
+        child: Option<DomNodeId>,
+    ) -> Result<(), String> {
+        if child.is_some() && self.live(child.unwrap()).is_none() {
+            return Err("child node is not valid".into());
+        }
+
+        // If child is None, we can just set it to None without further checks
+        if let Some(DomNode {
+            kind: NodeKind::Element { first_child, .. },
             ..
-        } = self.nodes[idx].kind
+        }) = self.live_mut(parent)
         {
             *first_child = child;
-        }
-    }
-
-    pub fn set_next_sibling(&mut self, node: DomNodeId, sibling: Option<DomNodeId>) {
-        let idx = node.get_index();
-        self.nodes[idx].next_sibling = sibling;
-    }
-
-    pub fn get_parent(&self, id: DomNodeId) -> Option<DomNodeId> {
-        let idx = id.get_index();
-        self.nodes[idx].parent
-    }
-
-    pub fn get_first_child(&self, parent: DomNodeId) -> Option<DomNodeId> {
-        let idx = (parent.get() - 1) as usize;
-        if let NodeKind::Element { first_child, .. } = self.nodes[idx].kind {
-            first_child
+            Ok(())
         } else {
-            None
+            Err("given node is not valid".into())
         }
     }
 
-    pub fn get_next_sibling(&self, node: DomNodeId) -> Option<DomNodeId> {
-        let idx = (node.get() - 1) as usize;
-        self.nodes[idx].next_sibling
+    pub fn set_next_sibling(
+        &mut self,
+        node: DomNodeId,
+        sibling: Option<DomNodeId>,
+    ) -> Result<(), String> {
+        if sibling.is_some() && self.live(sibling.unwrap()).is_none() {
+            return Err("sibling node is not valid".into());
+        }
+
+        // If sibling is None, we can just set it to None without further checks
+        if let Some(n) = self.live_mut(node) {
+            n.next_sibling = sibling;
+            Ok(())
+        } else {
+            Err("given node is not valid".into())
+        }
     }
 
-    pub fn get_tag(&self, id: DomNodeId) -> Option<u8> {
-        let idx = (id.get() - 1) as usize;
-        match self.nodes[idx].kind {
-            NodeKind::Element { tag, .. } => Some(tag),
-            NodeKind::EmptyLeaf { tag, .. } => Some(tag),
-            _ => None,
+    pub fn set_attributes(
+        &mut self,
+        id: DomNodeId,
+        new: Option<Box<[Attribute]>>,
+    ) -> Result<(), String> {
+        let current_attr_id = {
+            let node = self.live_mut(id).ok_or("Node not found")?;
+            match &node.kind {
+                NodeKind::Element { attrs, .. } | NodeKind::EmptyLeaf { attrs, .. } => *attrs,
+                NodeKind::Text {} => return Err("Text nodes have no attributes".into()),
+                NodeKind::Free => return Err("Free nodes have no attributes".into()),
+            }
+        };
+
+        if new.is_none() {
+            return Ok(());
         }
+
+        let next_attr_id = self.alloc_attrs(current_attr_id);
+
+        match (new.filter(|a| !a.is_empty()), next_attr_id) {
+            (Some(list), Some(id)) => self.attribute_table[id.get_index()] = Some(list),
+            (None, Some(existing)) => self.attribute_table[existing.get_index()] = None,
+            (_, None) => return Err("Failed to allocate attributes".into()),
+        };
+
+        if current_attr_id != next_attr_id {
+            let node = self.live_mut(id).ok_or("Node not found")?;
+            match &mut node.kind {
+                NodeKind::Element { attrs, .. } | NodeKind::EmptyLeaf { attrs, .. } => {
+                    *attrs = next_attr_id
+                }
+                _ => unreachable!(), // We already validated the type at the start
+            }
+        }
+
+        Ok(())
     }
 
     pub fn get_nodes_len(&self) -> usize {
@@ -411,12 +433,54 @@ impl Dom {
     }
 
     pub fn get_node(&self, id: DomNodeId) -> Option<&DomNode> {
-        let idx = (id.get() - 1) as usize;
-        self.nodes.get(idx)
+        let node = self.live(id)?;
+        if matches!(node.kind, NodeKind::Free) {
+            // Hide freed nodes
+            return None;
+        }
+
+        Some(node)
+    }
+
+    pub fn get_parent(&self, id: DomNodeId) -> Option<DomNodeId> {
+        self.live(id)?.parent
+    }
+
+    pub fn get_first_child(&self, id: DomNodeId) -> Option<DomNodeId> {
+        match self.live(id)?.kind {
+            NodeKind::Element { first_child, .. } => first_child,
+            _ => None,
+        }
+    }
+
+    pub fn get_next_sibling(&self, id: DomNodeId) -> Option<DomNodeId> {
+        self.live(id)?.next_sibling
+    }
+
+    pub fn get_attributes(&self, id: DomNodeId) -> Option<&[Attribute]> {
+        match self.live(id)?.kind {
+            NodeKind::EmptyLeaf {
+                attrs: Some(attrs_id),
+                ..
+            }
+            | NodeKind::Element {
+                attrs: Some(attrs_id),
+                ..
+            } => self.attribute_table.get(attrs_id.get_index())?.as_deref(),
+            _ => None,
+        }
+    }
+
+    pub fn get_tag(&self, id: DomNodeId) -> Option<u8> {
+        match self.live(id)?.kind {
+            NodeKind::Element { tag, .. } => Some(tag),
+            NodeKind::EmptyLeaf { tag, .. } => Some(tag),
+            _ => None,
+        }
     }
 
     pub fn get_root_node_id(&self) -> DomNodeId {
-        DomNodeId::from_u32(1).unwrap()
+        DomNodeId::new(0, 0).unwrap()
     }
 
     pub fn ensure_tag_registered(&mut self, tag: u8) {
@@ -432,167 +496,82 @@ impl Dom {
     }
 }
 
-impl Default for Dom {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-#[cfg(feature = "dense-core")]
+// Private helper functions for Dom
 impl Dom {
-    pub fn new() -> Self {
-        Self {
-            nodes: Vec::with_capacity(512),
-            attribute_table: Vec::with_capacity(512),
-            tag_registry: HashMap::new(),
-        }
+    fn live(&self, id: DomNodeId) -> Option<&DomNode> {
+        self.nodes
+            .get(id.slot())
+            .filter(|n| n.generation == id.generation() && !matches!(n.kind, NodeKind::Free))
     }
 
-    pub fn add_element(&mut self, tag: u8, attrs: Option<Box<[Attribute]>>) -> DomNodeId {
-        self.ensure_tag_registered(tag);
-        let node_idx = self.nodes.len();
+    fn live_mut(&mut self, id: DomNodeId) -> Option<&mut DomNode> {
+        self.nodes
+            .get_mut(id.slot())
+            .filter(|n| n.generation == id.generation() && !matches!(n.kind, NodeKind::Free))
+    }
 
-        let attrs = attrs.filter(|a| !a.is_empty()).map(|a| {
-            self.attribute_table.push(Some(a));
-            AttrId::from_usize(self.attribute_table.len() - 1).unwrap()
-        });
+    fn use_free_slot(&mut self, kind: NodeKind) -> Result<DomNodeId, NodeKind> {
+        while !self.free_slots.is_empty() {
+            let slot = self.free_slots.pop().unwrap() as usize;
+            if let Some(node) = self.nodes.get_mut(slot)
+                && let Some(id) = DomNodeId::new(slot, node.generation)
+            {
+                node.parent = None;
+                node.next_sibling = None;
+                node.kind = kind;
+                return Ok(id);
+            };
+        }
 
-        let kind = match get_tag_name(tag) {
-            "br" | "hr" => NodeKind::EmptyLeaf { tag, attrs },
-            _ => NodeKind::Element {
-                tag,
-                first_child: None,
-                attrs,
-            },
+        Err(kind)
+    }
+
+    fn alloc_attrs(&mut self, old_attr_id: Option<AttrId>) -> Option<AttrId> {
+        if let Some(a) = old_attr_id
+            && self.attribute_table.len() > a.get_index()
+        {
+            return Some(a);
+        }
+
+        if let Some(a) = self.free_attrs.pop() {
+            return Some(a);
+        }
+
+        let a = AttrId::from_usize(self.attribute_table.len())?;
+        self.attribute_table.push(None);
+        Some(a)
+    }
+
+    #[allow(dead_code)]
+    fn free(&mut self, id: DomNodeId) -> bool {
+        let Some(node) = self.live_mut(id) else {
+            return false;
         };
-        self.nodes.push(DomNode {
-            parent: None,
-            next_sibling: None,
-            kind,
-        });
-        DomNodeId::from_usize(node_idx).unwrap()
-    }
+        let old = std::mem::replace(&mut node.kind, NodeKind::Free);
+        node.parent = None;
+        node.next_sibling = None;
+        node.generation += 1;
 
-    pub fn set_attributes(
-        &mut self,
-        id: DomNodeId,
-        attrs: Option<Box<[Attribute]>>,
-    ) -> Result<(), String> {
-        if attrs.is_none() {
-            return Ok(());
+        let retire = node.generation as u32 >= GEN_DEAD;
+        if let NodeKind::Element { attrs: Some(a), .. }
+        | NodeKind::EmptyLeaf { attrs: Some(a), .. } = old
+        {
+            self.attribute_table[a.get_index()] = None;
+            self.free_attrs.push(a); // new field: Vec<AttrId>
+        }
+        if !retire {
+            self.free_slots.push(id.slot() as u32);
         }
 
-        let node = match self.nodes.get(id.get_index()) {
-            Some(n) => n,
-            None => return Err("Node not found".into()),
-        };
-
-        let attrs_index = match node.kind {
-            NodeKind::EmptyLeaf {
-                attrs: Some(attrs_id),
-                ..
-            }
-            | NodeKind::Element {
-                attrs: Some(attrs_id),
-                ..
-            } => Some(attrs_id.get_index()),
-            _ => None,
-        };
-
-        match attrs_index {
-            Some(index) => {
-                if let Some(existing) = self.attribute_table.get_mut(index) {
-                    *existing = attrs;
-                } else {
-                    return Err("Attribute ID points to a non-existent table entry".into());
-                }
-            }
-            None => {
-                self.attribute_table.push(attrs);
-            }
-        }
-
-        Ok(())
-    }
-
-    pub fn get_attributes(&self, id: DomNodeId) -> Option<&[Attribute]> {
-        match &self.nodes.get(id.get_index())?.kind {
-            NodeKind::EmptyLeaf {
-                attrs: Some(attrs_id),
-                ..
-            }
-            | NodeKind::Element {
-                attrs: Some(attrs_id),
-                ..
-            } => self.attribute_table.get(attrs_id.get_index())?.as_deref(),
-            _ => None,
-        }
-    }
-}
-
-#[cfg(not(feature = "dense-core"))]
-impl Dom {
-    pub fn new() -> Self {
-        Self {
-            nodes: Vec::with_capacity(512),
-            tag_registry: HashMap::new(),
-        }
-    }
-
-    pub fn add_element(&mut self, tag: u8, attrs: Option<Box<[Attribute]>>) -> DomNodeId {
-        self.ensure_tag_registered(tag);
-        let node_idx = self.nodes.len();
-
-        if node_idx == usize::MAX {
-            panic!("Maximum number of nodes reached");
-        }
-
-        match get_tag_name(tag) {
-            "br" | "hr" => self.nodes.push(DomNode {
-                parent: None,
-                next_sibling: None,
-                kind: NodeKind::EmptyLeaf { tag },
-            }),
-            _ => {
-                self.nodes.push(DomNode {
-                    parent: None,
-                    next_sibling: None,
-                    kind: NodeKind::Element {
-                        tag,
-                        first_child: None,
-                        attrs,
-                    },
-                });
-            }
-        }
-
-        DomNodeId::from_u32((node_idx as u32) + 1).unwrap()
-    }
-
-    pub fn set_attributes(&mut self, index: DomNodeId, _attrs: Option<Box<[Attribute]>>) {
-        let node_kind = &mut self.nodes[index.get_index()].kind;
-
-        match node_kind {
-            NodeKind::Element { attrs, .. } => {
-                *attrs = _attrs;
-            }
-            _ => {}
-        }
-    }
-
-    pub fn get_attributes(&self, index: DomNodeId) -> Option<&[Attribute]> {
-        let node = self.nodes.get(index.get_index())?;
-
-        match &node.kind {
-            NodeKind::Element { attrs, .. } => attrs.as_deref(),
-            _ => None,
-        }
+        true
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use markup5ever::tendril::Tendril;
+    use markup5ever::{Attribute, Namespace, local_name};
 
     #[test]
     fn test_add_and_retrieve_element() {
@@ -614,11 +593,173 @@ mod tests {
         let second_id = dom.add_element(20, None);
 
         // Ensure IDs start at 1 and increment
-        assert_eq!(first_id.get(), 1);
-        assert_eq!(second_id.get(), 2);
+        assert_eq!(first_id.slot(), 0);
+        assert_eq!(second_id.slot(), 1);
 
         // Ensure correct tag resolution despite the +1 offset logic
         assert_eq!(dom.get_tag(first_id), Some(10));
         assert_eq!(dom.get_tag(second_id), Some(20));
+    }
+
+    #[test]
+    fn test_clear_attributes() {
+        let mut dom = Dom::new();
+
+        let node = dom.add_element(
+            get_tag_index("div"),
+            Some(Box::new([
+                Attribute {
+                    name: QualName::new(None, Namespace::default(), local_name!("class")),
+                    value: Tendril::from("class1 class2"),
+                },
+                Attribute {
+                    name: QualName::new(None, Namespace::default(), local_name!("id")),
+                    value: Tendril::from("unique"),
+                },
+            ])),
+        );
+
+        let attrs = dom.get_attributes(node);
+        assert!(attrs.is_some());
+        assert_eq!(attrs.unwrap().len(), 2);
+
+        let result = dom.set_attributes(node, None);
+        assert!(!result.is_err());
+
+        let attrs = dom.get_attributes(node);
+        assert!(attrs.is_some());
+        assert_eq!(attrs.unwrap().len(), 2);
+
+        let result = dom.set_attributes(node, Some(Box::new([])));
+        assert!(!result.is_err());
+
+        let attrs = dom.get_attributes(node);
+        assert!(attrs.is_none());
+    }
+
+    #[test]
+    fn stale_id_rejected_after_reuse() {
+        let mut dom = Dom::new();
+        let a = dom.add_element(get_tag_index("div"), None);
+        assert!(dom.free(a));
+        let b = dom.add_element(get_tag_index("span"), None);
+        assert_eq!(a.slot(), b.slot());
+        assert_ne!(a, b);
+        assert!(dom.get_node(a).is_none());
+        assert_eq!(dom.get_tag(a), None);
+        assert_eq!(dom.get_tag(b), Some(get_tag_index("span")));
+        assert!(!dom.free(a)); // double free is a no-op
+    }
+
+    #[test]
+    fn stale_id_rejected_by_setters() {
+        let mut dom = Dom::new();
+        let a = dom.add_element(get_tag_index("div"), None);
+        let b = dom.add_element(get_tag_index("div"), None);
+        assert_ne!(a.slot(), b.slot());
+        assert!(dom.free(a));
+
+        let stale_parenting = dom.set_parent(b, a);
+        assert!(stale_parenting.is_err());
+    }
+
+    #[test]
+    fn slot_retires_at_gen_dead() {
+        let mut dom = Dom::new();
+        let div = get_tag_index("div");
+        let mut id = dom.add_element(div, None);
+        let slot = id.slot();
+        for _ in 0..(GEN_DEAD - 1) {
+            // generations 1..=1022
+            assert!(dom.free(id));
+            id = dom.add_element(div, None);
+            assert_eq!(id.slot(), slot);
+        }
+        assert!(dom.free(id)); // bumps to GEN_DEAD: retired
+        assert_ne!(dom.add_element(div, None).slot(), slot);
+    }
+
+    #[test]
+    fn stale_handles_cannot_mutate_reused_nodes() {
+        let mut dom = Dom::new();
+        let parent = dom.add_element(get_tag_index("div"), None);
+        let stale = dom.add_element(get_tag_index("span"), None);
+
+        assert!(dom.free(stale));
+
+        let replacement = dom.add_element(get_tag_index("section"), None);
+        assert_eq!(stale.slot(), replacement.slot());
+        assert_ne!(stale, replacement);
+
+        // A stale node ID must not modify its replacement's parent.
+        assert!(dom.set_parent(stale, parent).is_err());
+        assert_eq!(dom.get_parent(replacement), None);
+
+        // Nor its next sibling.
+        assert!(dom.set_next_sibling(stale, Some(parent)).is_err());
+        assert_eq!(dom.get_next_sibling(replacement), None);
+
+        // Nor the replacement's first child when used as a parent ID.
+        assert!(dom.set_first_child(stale, Some(parent)).is_err());
+        assert_eq!(dom.get_first_child(replacement), None);
+
+        // Attribute mutation must reject stale IDs.
+        assert!(dom.set_attributes(stale, Some(Box::new([]))).is_err());
+
+        // The replacement itself must remain valid and unchanged.
+        assert_eq!(dom.get_tag(replacement), Some(get_tag_index("section")));
+    }
+
+    #[test]
+    fn stale_child_id_rejected_by_set_first_child() {
+        let mut dom = Dom::new();
+
+        let parent = dom.add_element(get_tag_index("div"), None);
+        let stale_child = dom.add_element(get_tag_index("span"), None);
+
+        // Free the child, then reuse its slot with a new generation.
+        assert!(dom.free(stale_child));
+        let replacement = dom.add_element(get_tag_index("section"), None);
+
+        assert_eq!(stale_child.slot(), replacement.slot());
+        assert_ne!(stale_child, replacement);
+
+        // The old ID must not be accepted as the parent's first child.
+        let result = dom.set_first_child(parent, Some(stale_child));
+
+        assert!(result.is_err());
+        assert_eq!(dom.get_first_child(parent), None);
+
+        // Reusing the slot must not invalidate the replacement's own ID.
+        assert_eq!(dom.get_tag(replacement), Some(get_tag_index("section")));
+    }
+
+    #[test]
+    fn stale_sibling_id_rejected_by_set_next_sibling() {
+        let mut dom = Dom::new();
+
+        let node = dom.add_element(get_tag_index("div"), None);
+        let stale_sibling = dom.add_element(get_tag_index("span"), None);
+
+        // Free the sibling, then reuse its slot with a new generation.
+        assert!(dom.free(stale_sibling));
+        let replacement = dom.add_element(get_tag_index("section"), None);
+
+        assert_eq!(stale_sibling.slot(), replacement.slot());
+        assert_ne!(stale_sibling, replacement);
+
+        // The old ID must not be stored as the node's next sibling.
+        let result = dom.set_next_sibling(node, Some(stale_sibling));
+
+        assert!(result.is_err());
+        assert_eq!(dom.get_next_sibling(node), None);
+
+        // The replacement remains valid.
+        assert_eq!(dom.get_tag(replacement), Some(get_tag_index("section")));
+    }
+
+    #[test]
+    fn option_id_is_four_bytes() {
+        assert_eq!(size_of::<Option<DomNodeId>>(), 4);
     }
 }
