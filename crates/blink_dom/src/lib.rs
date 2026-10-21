@@ -336,25 +336,56 @@ impl Dom {
         DomNodeId::new(node_idx, 0).unwrap()
     }
 
-    pub fn set_parent(&mut self, node: DomNodeId, parent: DomNodeId) {
+    pub fn set_parent(&mut self, node: DomNodeId, parent: DomNodeId) -> Result<(), String> {
+        if self.live(parent).is_none() {
+            return Err("parent node is not valid".into());
+        }
+
         if let Some(n) = self.live_mut(node) {
             n.parent = Some(parent);
+            Ok(())
+        } else {
+            Err("given node is not valid".into())
         }
     }
 
-    pub fn set_first_child(&mut self, parent: DomNodeId, child: Option<DomNodeId>) {
+    pub fn set_first_child(
+        &mut self,
+        parent: DomNodeId,
+        child: Option<DomNodeId>,
+    ) -> Result<(), String> {
+        if child.is_some() && self.live(child.unwrap()).is_none() {
+            return Err("child node is not valid".into());
+        }
+
+        // If child is None, we can just set it to None without further checks
         if let Some(DomNode {
             kind: NodeKind::Element { first_child, .. },
             ..
         }) = self.live_mut(parent)
         {
             *first_child = child;
+            Ok(())
+        } else {
+            Err("given node is not valid".into())
         }
     }
 
-    pub fn set_next_sibling(&mut self, node: DomNodeId, sibling: Option<DomNodeId>) {
+    pub fn set_next_sibling(
+        &mut self,
+        node: DomNodeId,
+        sibling: Option<DomNodeId>,
+    ) -> Result<(), String> {
+        if sibling.is_some() && self.live(sibling.unwrap()).is_none() {
+            return Err("sibling node is not valid".into());
+        }
+
+        // If sibling is None, we can just set it to None without further checks
         if let Some(n) = self.live_mut(node) {
             n.next_sibling = sibling;
+            Ok(())
+        } else {
+            Err("given node is not valid".into())
         }
     }
 
@@ -363,10 +394,6 @@ impl Dom {
         id: DomNodeId,
         new: Option<Box<[Attribute]>>,
     ) -> Result<(), String> {
-        if new.is_none() {
-            return Ok(());
-        }
-
         let current_attr_id = {
             let node = self.live_mut(id).ok_or("Node not found")?;
             match &node.kind {
@@ -375,6 +402,14 @@ impl Dom {
                 NodeKind::Free => return Err("Free nodes have no attributes".into()),
             }
         };
+
+        if new.is_none() {
+            return Ok(());
+        }
+
+        if new.clone().unwrap().is_empty() {
+            return Ok(());
+        }
 
         let next_attr_id = self.alloc_attrs(current_attr_id);
 
@@ -583,6 +618,18 @@ mod tests {
     }
 
     #[test]
+    fn stale_id_rejected_by_setters() {
+        let mut dom = Dom::new();
+        let a = dom.add_element(get_tag_index("div"), None);
+        let b = dom.add_element(get_tag_index("div"), None);
+        assert_ne!(a.slot(), b.slot());
+        assert!(dom.free(a));
+
+        let stale_parenting = dom.set_parent(b, a);
+        assert!(stale_parenting.is_err());
+    }
+
+    #[test]
     fn slot_retires_at_gen_dead() {
         let mut dom = Dom::new();
         let div = get_tag_index("div");
@@ -611,15 +658,15 @@ mod tests {
         assert_ne!(stale, replacement);
 
         // A stale node ID must not modify its replacement's parent.
-        dom.set_parent(stale, parent);
+        assert!(dom.set_parent(stale, parent).is_err());
         assert_eq!(dom.get_parent(replacement), None);
 
         // Nor its next sibling.
-        dom.set_next_sibling(stale, Some(parent));
+        assert!(dom.set_next_sibling(stale, Some(parent)).is_err());
         assert_eq!(dom.get_next_sibling(replacement), None);
 
         // Nor the replacement's first child when used as a parent ID.
-        dom.set_first_child(stale, Some(parent));
+        assert!(dom.set_first_child(stale, Some(parent)).is_err());
         assert_eq!(dom.get_first_child(replacement), None);
 
         // Attribute mutation must reject stale IDs.

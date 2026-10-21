@@ -230,8 +230,10 @@ mod tests {
         let p_attrs = vec![make_attr("class", "card active")].into_boxed_slice();
         let p_node = dom.add_element(P_TAG_INDEX, Some(p_attrs));
 
-        dom.set_parent(p_node, div_node);
-        dom.set_first_child(div_node, Some(p_node));
+        dom.set_parent(p_node, div_node)
+            .expect("Failed to set parent");
+        dom.set_first_child(div_node, Some(p_node))
+            .expect("Failed to set first child");
 
         let rule_p = get_first_rule("p { color: red; }");
         assert!(
@@ -292,11 +294,15 @@ mod tests {
         );
 
         // Wire the pointers
-        dom.set_parent(section_node, div_node);
-        dom.set_first_child(div_node, Some(section_node));
+        dom.set_parent(section_node, div_node)
+            .expect("Failed to set parent for section");
+        dom.set_first_child(div_node, Some(section_node))
+            .expect("Failed to set section as first child for div");
 
-        dom.set_parent(p_node, section_node);
-        dom.set_first_child(section_node, Some(p_node));
+        dom.set_parent(p_node, section_node)
+            .expect("Failed to set parent for p");
+        dom.set_first_child(section_node, Some(p_node))
+            .expect("Failed to set p as first child for section");
 
         // Grandparent matching (The ultimate W3C descendant test)
         let rule_grandparent = get_first_rule("div#main .card { color: red; }");

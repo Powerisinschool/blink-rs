@@ -95,16 +95,19 @@ impl TreeSink for HtmlDom {
             }
         };
 
-        dom.set_parent(child_handle, *parent);
+        dom.set_parent(child_handle, *parent)
+            .expect("Failed to set parent for child node");
 
         if let Some(first) = dom.get_first_child(*parent) {
             let mut curr = first;
             while let Some(next) = dom.get_next_sibling(curr) {
                 curr = next;
             }
-            dom.set_next_sibling(curr, Some(child_handle));
+            dom.set_next_sibling(curr, Some(child_handle))
+                .expect("Failed to set next sibling for child node");
         } else {
-            dom.set_first_child(*parent, Some(child_handle));
+            dom.set_first_child(*parent, Some(child_handle))
+                .expect("Failed to set first child for parent node");
         }
     }
 
@@ -152,18 +155,23 @@ impl TreeSink for HtmlDom {
 
         let parent_opt = dom.get_parent(*sibling);
         if let Some(parent) = parent_opt {
-            dom.set_parent(new_handle, parent);
+            dom.set_parent(new_handle, parent)
+                .expect("Failed to set parent for new node");
 
             if let Some(first) = dom.get_first_child(parent) {
                 if first == *sibling {
-                    dom.set_next_sibling(new_handle, Some(*sibling));
-                    dom.set_first_child(parent, Some(new_handle));
+                    dom.set_next_sibling(new_handle, Some(*sibling))
+                        .expect("Failed to set next sibling for new node");
+                    dom.set_first_child(parent, Some(new_handle))
+                        .expect("Failed to set first child for parent node");
                 } else {
                     let mut curr = first;
                     while let Some(next) = dom.get_next_sibling(curr) {
                         if next == *sibling {
-                            dom.set_next_sibling(new_handle, Some(*sibling));
-                            dom.set_next_sibling(curr, Some(new_handle));
+                            dom.set_next_sibling(new_handle, Some(*sibling))
+                                .expect("Failed to set next sibling for new node");
+                            dom.set_next_sibling(curr, Some(new_handle))
+                                .expect("Failed to set next sibling for current node");
                             break;
                         }
                         curr = next;
@@ -188,19 +196,22 @@ impl TreeSink for HtmlDom {
                 // if let Some(n) = next {
                 //     dom.set_first_child(p, Some(n));
                 // }
-                dom.set_first_child(p, next);
+                dom.set_first_child(p, next)
+                    .expect("Failed to set first child for parent node");
             } else {
                 let mut curr = first;
                 while let Some(next) = dom.get_next_sibling(curr) {
                     if next == *target {
-                        dom.set_next_sibling(curr, self.0.borrow().get_next_sibling(*target));
+                        dom.set_next_sibling(curr, self.0.borrow().get_next_sibling(*target))
+                            .expect("Failed to set next sibling for current node");
                         break;
                     }
                     curr = next;
                 }
             }
         }
-        dom.set_next_sibling(*target, None);
+        dom.set_next_sibling(*target, None)
+            .expect("Failed to clear next sibling for target node");
     }
 
     fn reparent_children(&self, node: &Self::Handle, new_parent: &Self::Handle) {
@@ -208,10 +219,12 @@ impl TreeSink for HtmlDom {
 
         if let Some(first) = dom.get_first_child(*node) {
             let mut curr = first;
-            dom.set_parent(curr, *new_parent);
+            dom.set_parent(curr, *new_parent)
+                .expect("Failed to set parent for child node");
             while let Some(next) = dom.get_next_sibling(curr) {
                 curr = next;
-                dom.set_parent(curr, *new_parent);
+                dom.set_parent(curr, *new_parent)
+                    .expect("Failed to set parent for child node");
             }
 
             // Append the whole chain to the end of the new parent's children
@@ -220,12 +233,15 @@ impl TreeSink for HtmlDom {
                 while let Some(np_next) = dom.get_next_sibling(np_curr) {
                     np_curr = np_next;
                 }
-                dom.set_next_sibling(np_curr, Some(first));
+                dom.set_next_sibling(np_curr, Some(first))
+                    .expect("Failed to set next sibling for child node");
             } else {
-                dom.set_first_child(*new_parent, Some(first));
+                dom.set_first_child(*new_parent, Some(first))
+                    .expect("Failed to set first child for parent node");
             }
         }
-        dom.set_first_child(*node, None); // Clear out old child pointer
+        dom.set_first_child(*node, None)
+            .expect("Failed to clear old child pointer"); // Clear out old child pointer
     }
 }
 
