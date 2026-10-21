@@ -2,6 +2,7 @@ use markup5ever::{Attribute, QualName, ns};
 use std::collections::HashMap;
 use std::fmt;
 use std::fmt::Formatter;
+use blink_core::generator::GEN_DEAD;
 
 const HTML_TAGS: &[&str] = &[
     "a",
@@ -336,22 +337,25 @@ impl Dom {
     }
 
     pub fn set_parent(&mut self, node: DomNodeId, parent: DomNodeId) {
-        let idx = node.slot();
-        self.nodes[idx].parent = Some(parent);
+        if let Some(n) = self.live_mut(node) {
+            n.parent = Some(parent);
+        }
     }
 
     pub fn set_first_child(&mut self, parent: DomNodeId, child: Option<DomNodeId>) {
-        if let NodeKind::Element {
-            ref mut first_child,
+        if let Some(DomNode {
+            kind: NodeKind::Element { first_child, .. },
             ..
-        } = self.nodes[parent.slot()].kind
+        }) = self.live_mut(parent)
         {
             *first_child = child;
         }
     }
 
     pub fn set_next_sibling(&mut self, node: DomNodeId, sibling: Option<DomNodeId>) {
-        self.nodes[node.slot()].next_sibling = sibling;
+        if let Some(n) = self.live_mut(node) {
+            n.next_sibling = sibling;
+        }
     }
 
     pub fn set_attributes(
@@ -359,6 +363,10 @@ impl Dom {
         id: DomNodeId,
         new: Option<Box<[Attribute]>>,
     ) -> Result<(), String> {
+        if matches!(new, None) {
+            return Ok(());
+        }
+
         let current_attr_id = {
             let node = self.live_mut(id).ok_or("Node not found")?;
             match &node.kind {
@@ -503,28 +511,29 @@ impl Dom {
         Some(a)
     }
 
-    // fn free(&mut self, id: DomNodeId) -> bool {
-    //     let Some(node) = self.live_mut(id) else {
-    //         return false;
-    //     };
-    //     let old = std::mem::replace(&mut node.kind, NodeKind::Free);
-    //     node.parent = None;
-    //     node.next_sibling = None;
-    //     node.generation += 1;
-    //
-    //     let retire = node.generation as u32 >= GEN_DEAD;
-    //     if let NodeKind::Element { attrs: Some(a), .. }
-    //     | NodeKind::EmptyLeaf { attrs: Some(a), .. } = old
-    //     {
-    //         self.attribute_table[a.get_index()] = None;
-    //         self.free_attrs.push(a); // new field: Vec<AttrId>
-    //     }
-    //     if !retire {
-    //         self.free_slots.push(id.slot() as u32);
-    //     }
-    //
-    //     true
-    // }
+    #[allow(dead_code)]
+    fn free(&mut self, id: DomNodeId) -> bool {
+        let Some(node) = self.live_mut(id) else {
+            return false;
+        };
+        let old = std::mem::replace(&mut node.kind, NodeKind::Free);
+        node.parent = None;
+        node.next_sibling = None;
+        node.generation += 1;
+
+        let retire = node.generation as u32 >= GEN_DEAD;
+        if let NodeKind::Element { attrs: Some(a), .. }
+        | NodeKind::EmptyLeaf { attrs: Some(a), .. } = old
+        {
+            self.attribute_table[a.get_index()] = None;
+            self.free_attrs.push(a); // new field: Vec<AttrId>
+        }
+        if !retire {
+            self.free_slots.push(id.slot() as u32);
+        }
+
+        true
+    }
 }
 
 #[cfg(test)]
@@ -559,35 +568,35 @@ mod tests {
         assert_eq!(dom.get_tag(second_id), Some(20));
     }
 
-    // #[test]
-    // fn stale_id_rejected_after_reuse() {
-    //     let mut dom = Dom::new();
-    //     let a = dom.add_element(get_tag_index("div"), None);
-    //     assert!(dom.free(a));
-    //     let b = dom.add_element(get_tag_index("span"), None);
-    //     assert_eq!(a.slot(), b.slot());
-    //     assert_ne!(a, b);
-    //     assert!(dom.get_node(a).is_none());
-    //     assert_eq!(dom.get_tag(a), None);
-    //     assert_eq!(dom.get_tag(b), Some(get_tag_index("span")));
-    //     assert!(!dom.free(a)); // double free is a no-op
-    // }
-    //
-    // #[test]
-    // fn slot_retires_at_gen_dead() {
-    //     let mut dom = Dom::new();
-    //     let div = get_tag_index("div");
-    //     let mut id = dom.add_element(div, None);
-    //     let slot = id.slot();
-    //     for _ in 0..(GEN_DEAD - 1) {
-    //         // generations 1..=1022
-    //         assert!(dom.free(id));
-    //         id = dom.add_element(div, None);
-    //         assert_eq!(id.slot(), slot);
-    //     }
-    //     assert!(dom.free(id)); // bumps to GEN_DEAD: retired
-    //     assert_ne!(dom.add_element(div, None).slot(), slot);
-    // }
+    #[test]
+    fn stale_id_rejected_after_reuse() {
+        let mut dom = Dom::new();
+        let a = dom.add_element(get_tag_index("div"), None);
+        assert!(dom.free(a));
+        let b = dom.add_element(get_tag_index("span"), None);
+        assert_eq!(a.slot(), b.slot());
+        assert_ne!(a, b);
+        assert!(dom.get_node(a).is_none());
+        assert_eq!(dom.get_tag(a), None);
+        assert_eq!(dom.get_tag(b), Some(get_tag_index("span")));
+        assert!(!dom.free(a)); // double free is a no-op
+    }
+
+    #[test]
+    fn slot_retires_at_gen_dead() {
+        let mut dom = Dom::new();
+        let div = get_tag_index("div");
+        let mut id = dom.add_element(div, None);
+        let slot = id.slot();
+        for _ in 0..(GEN_DEAD - 1) {
+            // generations 1..=1022
+            assert!(dom.free(id));
+            id = dom.add_element(div, None);
+            assert_eq!(id.slot(), slot);
+        }
+        assert!(dom.free(id)); // bumps to GEN_DEAD: retired
+        assert_ne!(dom.add_element(div, None).slot(), slot);
+    }
 
     #[test]
     fn option_id_is_four_bytes() {
