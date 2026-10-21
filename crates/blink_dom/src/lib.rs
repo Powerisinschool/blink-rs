@@ -407,10 +407,6 @@ impl Dom {
             return Ok(());
         }
 
-        if new.clone().unwrap().is_empty() {
-            return Ok(());
-        }
-
         let next_attr_id = self.alloc_attrs(current_attr_id);
 
         match (new.filter(|a| !a.is_empty()), next_attr_id) {
@@ -574,6 +570,8 @@ impl Dom {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use markup5ever::tendril::Tendril;
+    use markup5ever::{Attribute, Namespace, local_name};
 
     #[test]
     fn test_add_and_retrieve_element() {
@@ -601,6 +599,42 @@ mod tests {
         // Ensure correct tag resolution despite the +1 offset logic
         assert_eq!(dom.get_tag(first_id), Some(10));
         assert_eq!(dom.get_tag(second_id), Some(20));
+    }
+
+    #[test]
+    fn test_clear_attributes() {
+        let mut dom = Dom::new();
+
+        let node = dom.add_element(
+            get_tag_index("div"),
+            Some(Box::new([
+                Attribute {
+                    name: QualName::new(None, Namespace::default(), local_name!("class")),
+                    value: Tendril::from("class1 class2"),
+                },
+                Attribute {
+                    name: QualName::new(None, Namespace::default(), local_name!("id")),
+                    value: Tendril::from("unique"),
+                },
+            ])),
+        );
+
+        let attrs = dom.get_attributes(node);
+        assert!(attrs.is_some());
+        assert_eq!(attrs.unwrap().len(), 2);
+
+        let result = dom.set_attributes(node, None);
+        assert!(!result.is_err());
+
+        let attrs = dom.get_attributes(node);
+        assert!(attrs.is_some());
+        assert_eq!(attrs.unwrap().len(), 2);
+
+        let result = dom.set_attributes(node, Some(Box::new([])));
+        assert!(!result.is_err());
+
+        let attrs = dom.get_attributes(node);
+        assert!(attrs.is_none());
     }
 
     #[test]

@@ -1,11 +1,11 @@
 [package]
 name = "blink_dom"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 
 [features]
 dense-core = []
-default = ["dense-core"]
+default = []
 
 [dependencies]
 markup5ever.workspace = true

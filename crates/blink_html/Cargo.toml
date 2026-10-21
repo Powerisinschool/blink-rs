@@ -3,21 +3,18 @@ name = "blink_html"
 version = "0.1.0"
 edition = "2024"
 
-[features]
-dense-core = ["blink_dom/dense-core"]
-
 [dependencies]
 html5ever.workspace = true
-blink_dom = { path = "../blink_dom", features = [] }
+blink_dom = { path = "../blink_dom" }
 
 [dev-dependencies]
-criterion = { version = "0.8.2", features = ["html_reports"] }
-stats_alloc = "0.1.10"
+#criterion = { version = "0.8.2", features = ["html_reports"] }
+#stats_alloc = "0.1.10"
 
-[[bench]]
-name = "dom_comparison"
-harness = false
-path = "../../benches/dom_comparison.rs"
+#[[bench]]
+#name = "dom_comparison"
+#harness = false
+#path = "../../benches/dom_comparison.rs"
 
-[profile.bench]
-debug = true
+#[profile.bench]
+#debug = true
