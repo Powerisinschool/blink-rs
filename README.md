@@ -1,4 +1,4 @@
-# Blink-Rust
+# Blink(e)rs
 
 An experimental web rendering engine in Rust, focused on the **DOM → style → layout** pipeline. It takes the single-threaded, constraint-driven layout model of Chromium's LayoutNG as its reference design and rebuilds it around a flat, arena-allocated DOM.
 

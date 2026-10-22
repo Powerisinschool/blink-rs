@@ -1,6 +1,6 @@
-# Contributing to Blink-Rust
+# Contributing to Blink(e)rs
 
-Thanks for your interest. Blink-Rust is a pre-alpha engine: the architecture is still settling, so small, focused changes with tests are the easiest to review and merge. For anything large, open an issue first so we can agree on the approach.
+Thanks for your interest. blink-rs is a pre-alpha engine: the architecture is still settling, so small, focused changes with tests are the easiest to review and merge. For anything large, open an issue first so we can agree on the approach.
 
 ## Scope
 
@@ -11,12 +11,12 @@ Out of scope for now: a JavaScript runtime (Phase 3), networking, and re-impleme
 ## Getting started
 
 ```sh
-git clone <repo-url>
-cd <repo>
+git clone https://github.com/Powerisinschool/blink-rs.git
+cd blink-rs # or whatever you name it
 cargo build --workspace
 cargo test --workspace
 cargo test --workspace --features blink_dom/dense-core
-# Write output.png from assets/test.html + test.css
+# Writes output.png from assets/test.html + test.css
 cargo run -p blink_shell
 ```
 
