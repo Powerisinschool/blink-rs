@@ -87,24 +87,38 @@ impl TreeSink for HtmlDom {
     fn append(&self, parent: &Self::Handle, child: NodeOrText<Self::Handle>) {
         let mut dom = self.0.borrow_mut();
 
-        let child_handle = match child {
-            NodeOrText::AppendNode(node) => node,
-            NodeOrText::AppendText(text) => {
-                let text_id = text.len() as u32; // Replace with proper text id
-                dom.add_text(text_id)
-            }
-        };
-
-        dom.set_parent(child_handle, *parent)
-            .expect("Failed to set parent for child node");
-
+        let mut last_child = None;
         if let Some(first) = dom.get_first_child(*parent) {
             let mut curr = first;
             while let Some(next) = dom.get_next_sibling(curr) {
                 curr = next;
             }
-            dom.set_next_sibling(curr, Some(child_handle))
-                .expect("Failed to set next sibling for child node");
+            last_child = Some(curr);
+        }
+
+        let child_handle = match child {
+            NodeOrText::AppendNode(node) => node,
+            NodeOrText::AppendText(text) => {
+                if let Some(last_child_id) = last_child
+                    && let Some(last_child) = dom.get_node(last_child_id)
+                    && last_child.kind.is_text()
+                {
+                    // append to the last text node instead of creating a new one
+                    last_child_id
+                } else {
+                    let text_id = text.len() as u32; // Replace with proper text id
+                    dom.add_text(text_id)
+                }
+            }
+        };
+        dom.set_parent(child_handle, *parent)
+            .expect("Failed to set parent for child node");
+
+        if let Some(last_child) = last_child {
+            if last_child != child_handle {
+                dom.set_next_sibling(last_child, Some(child_handle))
+                    .expect("Failed to set next sibling for child node");
+            }
         } else {
             dom.set_first_child(*parent, Some(child_handle))
                 .expect("Failed to set first child for parent node");
@@ -269,26 +283,43 @@ mod tests {
 
         // Check that the root node has one child (the div)
         let document = dom.get_root_node_id();
-        let html_id = dom.get_first_child(document).expect("Document should have a child (html)");
-        let head_id = dom.get_first_child(html_id).expect("html should have a child (head)");
-        let body_id = dom.get_next_sibling(head_id).expect("html should have a second child (body)");
+        let html_id = dom
+            .get_first_child(document)
+            .expect("Document should have a child (html)");
+        let head_id = dom
+            .get_first_child(html_id)
+            .expect("html should have a child (head)");
+        let body_id = dom
+            .get_next_sibling(head_id)
+            .expect("html should have a second child (body)");
 
-        let div_id = dom.get_first_child(body_id).expect("Body should have a child");
+        let div_id = dom
+            .get_first_child(body_id)
+            .expect("Body should have a child");
 
-        assert_eq!(dom.get_tag(div_id).unwrap(), get_tag_index(&"div"));
+        assert_eq!(dom.get_tag(div_id).unwrap(), get_tag_index("div"));
 
         // Check that the div has three children: text, span, text
-        let first_child = dom.get_first_child(div_id).expect("Div should have a first child");
+        let first_child = dom
+            .get_first_child(div_id)
+            .expect("Div should have a first child");
         assert!(dom.get_tag(first_child).is_none()); // Text node
 
-        let second_child = dom.get_next_sibling(first_child).expect("Div should have a second child");
+        let second_child = dom
+            .get_next_sibling(first_child)
+            .expect("Div should have a second child");
         assert!(dom.get_tag(second_child).is_some());
-        assert_eq!(dom.get_tag(second_child).unwrap(), get_tag_index(&"span"));
+        assert_eq!(dom.get_tag(second_child).unwrap(), get_tag_index("span"));
 
-        let third_child = dom.get_next_sibling(second_child).expect("Div should have a third child");
+        let third_child = dom
+            .get_next_sibling(second_child)
+            .expect("Div should have a third child");
         assert!(dom.get_tag(third_child).is_none()); // Text node
 
         let impossible_fourth_child = dom.get_next_sibling(third_child);
-        assert!(impossible_fourth_child.is_none(), "Div should not have a fourth child");
+        assert!(
+            impossible_fourth_child.is_none(),
+            "Div should not have a fourth child"
+        );
     }
 }
