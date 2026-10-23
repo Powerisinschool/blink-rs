@@ -252,3 +252,43 @@ pub fn parse_html(html: &str) -> Dom {
         .0
         .into_inner()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_merge_adjacent_text_nodes() {
+        let html = r#"
+        <div>
+            Hello,
+            <span>world!</span>
+            How are you?
+        </div>"#;
+        let dom = parse_html(html);
+
+        // Check that the root node has one child (the div)
+        let document = dom.get_root_node_id();
+        let html_id = dom.get_first_child(document).expect("Document should have a child (html)");
+        let head_id = dom.get_first_child(html_id).expect("html should have a child (head)");
+        let body_id = dom.get_next_sibling(head_id).expect("html should have a second child (body)");
+
+        let div_id = dom.get_first_child(body_id).expect("Body should have a child");
+
+        assert_eq!(dom.get_tag(div_id).unwrap(), get_tag_index(&"div"));
+
+        // Check that the div has three children: text, span, text
+        let first_child = dom.get_first_child(div_id).expect("Div should have a first child");
+        assert!(dom.get_tag(first_child).is_none()); // Text node
+
+        let second_child = dom.get_next_sibling(first_child).expect("Div should have a second child");
+        assert!(dom.get_tag(second_child).is_some());
+        assert_eq!(dom.get_tag(second_child).unwrap(), get_tag_index(&"span"));
+
+        let third_child = dom.get_next_sibling(second_child).expect("Div should have a third child");
+        assert!(dom.get_tag(third_child).is_none()); // Text node
+
+        let impossible_fourth_child = dom.get_next_sibling(third_child);
+        assert!(impossible_fourth_child.is_none(), "Div should not have a fourth child");
+    }
+}
