@@ -231,6 +231,24 @@ impl fmt::Debug for NodeKind {
     }
 }
 
+impl NodeKind {
+    pub fn is_element(&self) -> bool {
+        matches!(self, NodeKind::Element { .. })
+    }
+
+    pub fn is_text(&self) -> bool {
+        matches!(self, NodeKind::Text { .. })
+    }
+
+    pub fn is_empty_leaf(&self) -> bool {
+        matches!(self, NodeKind::EmptyLeaf { .. })
+    }
+
+    pub fn is_alive(&self) -> bool {
+        !matches!(self, NodeKind::Free)
+    }
+}
+
 pub struct DomNodeTag;
 pub type DomNodeId = blink_core::generator::GenId<DomNodeTag>;
 
