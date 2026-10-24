@@ -160,7 +160,8 @@ fn cascade_properties(
             display = match d.as_str() {
                 "block" => Display::Block,
                 "none" => Display::None,
-                _ => Display::InlineBlock,
+                "inline-block" => Display::InlineBlock,
+                _ => display,
             };
         }
 
