@@ -163,37 +163,60 @@ impl TreeSink for HtmlDom {
     fn append_before_sibling(&self, sibling: &Self::Handle, new_node: NodeOrText<Self::Handle>) {
         let mut dom = self.0.borrow_mut();
 
-        let new_handle = match new_node {
-            NodeOrText::AppendNode(node) => node,
+        let (new_handle, text) = match new_node {
+            NodeOrText::AppendNode(node) => (Some(node), None),
             NodeOrText::AppendText(text) => {
-                dom.add_text(text.to_string().as_str()) // TODO: handle merging with previous text nodes
+                (None, Some(text))
             }
         };
 
         let parent_opt = dom.get_parent(*sibling);
         if let Some(parent) = parent_opt {
-            dom.set_parent(new_handle, parent)
-                .expect("Failed to set parent for new node");
-
+            let mut handle = None;
             if let Some(first) = dom.get_first_child(parent) {
                 if first == *sibling {
+                    let new_handle = if let Some(new_handle) = new_handle {
+                        new_handle
+                    } else {
+                        dom.add_text(text.unwrap().to_string().as_str())
+                    };
                     dom.set_next_sibling(new_handle, Some(*sibling))
                         .expect("Failed to set next sibling for new node");
                     dom.set_first_child(parent, Some(new_handle))
                         .expect("Failed to set first child for parent node");
+                    handle = Some(new_handle);
                 } else {
                     let mut curr = first;
                     while let Some(next) = dom.get_next_sibling(curr) {
                         if next == *sibling {
-                            dom.set_next_sibling(new_handle, Some(*sibling))
-                                .expect("Failed to set next sibling for new node");
-                            dom.set_next_sibling(curr, Some(new_handle))
-                                .expect("Failed to set next sibling for current node");
+                            if dom.get_node(curr).is_some_and(|node| node.is_text())
+                                && let Some(text) = text
+                            {
+                                dom.append_text(curr, text.to_string().as_str())
+                                    .expect("Failed to append text to previous text node");
+                                handle = None; // No new node was created, so we don't need to set the parent or next sibling
+                            } else {
+                                let new_handle = if let Some(new_handle) = new_handle {
+                                    new_handle
+                                } else {
+                                    dom.add_text(text.unwrap().to_string().as_str())
+                                };
+                                dom.set_next_sibling(new_handle, Some(*sibling))
+                                    .expect("Failed to set next sibling for new node");
+                                dom.set_next_sibling(curr, Some(new_handle))
+                                    .expect("Failed to set next sibling for current node");
+                                handle = Some(new_handle);
+                            }
                             break;
                         }
                         curr = next;
                     }
                 }
+            }
+
+            if let Some(new_handle) = handle {
+                dom.set_parent(new_handle, parent)
+                    .expect("Failed to set parent for new node");
             }
         }
     }
