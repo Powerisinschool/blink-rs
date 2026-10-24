@@ -384,4 +384,83 @@ mod tests {
             "Div should not have a second child"
         );
     }
+
+    #[test]
+    fn test_append_before_sibling_moves_node_between_parents() {
+        let html_dom = HtmlDom::new();
+        let document = html_dom.get_document();
+
+        let source = html_dom
+            .0
+            .borrow_mut()
+            .add_element(get_tag_index("div"), None);
+        let destination = html_dom
+            .0
+            .borrow_mut()
+            .add_element(get_tag_index("div"), None);
+
+        let source_first = html_dom
+            .0
+            .borrow_mut()
+            .add_element(get_tag_index("span"), None);
+        let moving = html_dom
+            .0
+            .borrow_mut()
+            .add_element(get_tag_index("span"), None);
+        let source_last = html_dom
+            .0
+            .borrow_mut()
+            .add_element(get_tag_index("span"), None);
+
+        let destination_first = html_dom
+            .0
+            .borrow_mut()
+            .add_element(get_tag_index("span"), None);
+        let target = html_dom
+            .0
+            .borrow_mut()
+            .add_element(get_tag_index("span"), None);
+        let destination_last = html_dom
+            .0
+            .borrow_mut()
+            .add_element(get_tag_index("span"), None);
+
+        html_dom.append(&document, NodeOrText::AppendNode(source));
+        html_dom.append(&document, NodeOrText::AppendNode(destination));
+
+        // Initial source child chain: source_first -> moving -> source_last.
+        html_dom.append(&source, NodeOrText::AppendNode(source_first));
+        html_dom.append(&source, NodeOrText::AppendNode(moving));
+        html_dom.append(&source, NodeOrText::AppendNode(source_last));
+
+        // Initial destination child chain: destination_first -> target -> destination_last.
+        html_dom.append(&destination, NodeOrText::AppendNode(destination_first));
+        html_dom.append(&destination, NodeOrText::AppendNode(target));
+        html_dom.append(&destination, NodeOrText::AppendNode(destination_last));
+
+        html_dom.append_before_sibling(&target, NodeOrText::AppendNode(moving));
+
+        let dom = html_dom.0.borrow();
+
+        // Verify the source chain no longer contains moving.
+        assert_eq!(dom.get_first_child(source), Some(source_first));
+        assert_eq!(dom.get_next_sibling(source_first), Some(source_last));
+        assert_eq!(dom.get_next_sibling(source_last), None);
+
+        // Verify the destination chain is destination_first -> moving -> target -> destination_last.
+        assert_eq!(dom.get_first_child(destination), Some(destination_first));
+        assert_eq!(dom.get_next_sibling(destination_first), Some(moving));
+        assert_eq!(dom.get_next_sibling(moving), Some(target));
+        assert_eq!(dom.get_next_sibling(target), Some(destination_last));
+        assert_eq!(dom.get_next_sibling(destination_last), None);
+
+        // Verify the parent pointers are consistent with the child chains.
+        assert_eq!(dom.get_parent(source_first), Some(source));
+        assert_eq!(dom.get_parent(source_last), Some(source));
+
+        assert_eq!(dom.get_parent(destination_first), Some(destination));
+        assert_eq!(dom.get_parent(moving), Some(destination));
+        assert_eq!(dom.get_parent(target), Some(destination));
+        assert_eq!(dom.get_parent(destination_last), Some(destination));
+    }
 }
