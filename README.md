@@ -106,7 +106,7 @@ Unit tests cover selector matching, specificity, descendant chains, length parsi
 
 ### Phase 1.5: Text and inline flow
 
-- [ ] Merge adjacent text nodes in the tree builder
+- [x] Merge adjacent text nodes in the tree builder
 - [ ] Whitespace collapsing and text fragments
 - [ ] Line breaking and wrapping
 - [ ] Rename the current `Inline` to `InlineBlock`; introduce true inline layout
