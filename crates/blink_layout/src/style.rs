@@ -5,7 +5,7 @@ use markup5ever::local_name;
 #[derive(Debug, Clone)]
 pub enum Display {
     Block,
-    Inline,
+    InlineBlock,
     None,
 }
 
@@ -139,10 +139,10 @@ fn default_display(node_id: DomNodeId, dom: &Dom) -> Display {
         match get_tag_name(tag) {
             "head" | "script" | "style" | "title" | "meta" | "link" => Display::None,
             "document" | "html" | "body" | "div" | "p" | "section" | "ul" | "li" => Display::Block,
-            _ => Display::Inline,
+            _ => Display::InlineBlock,
         }
     } else {
-        Display::Inline
+        Display::InlineBlock
     }
 }
 
@@ -160,7 +160,7 @@ fn cascade_properties(
             display = match d.as_str() {
                 "block" => Display::Block,
                 "none" => Display::None,
-                _ => Display::Inline,
+                _ => Display::InlineBlock,
             };
         }
 
