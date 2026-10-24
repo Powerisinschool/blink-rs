@@ -161,12 +161,15 @@ impl TreeSink for HtmlDom {
     }
 
     fn append_before_sibling(&self, sibling: &Self::Handle, new_node: NodeOrText<Self::Handle>) {
-        let mut dom = self.0.borrow_mut();
-
         let (new_handle, text) = match new_node {
-            NodeOrText::AppendNode(node) => (Some(node), None),
+            NodeOrText::AppendNode(node) => {
+                self.remove_from_parent(&node);
+                (Some(node), None)
+            }
             NodeOrText::AppendText(text) => (None, Some(text)),
         };
+
+        let mut dom = self.0.borrow_mut();
 
         let parent_opt = dom.get_parent(*sibling);
         if let Some(parent) = parent_opt {
@@ -231,16 +234,14 @@ impl TreeSink for HtmlDom {
         {
             if first == *target {
                 let next = dom.get_next_sibling(*target);
-                // if let Some(n) = next {
-                //     dom.set_first_child(p, Some(n));
-                // }
                 dom.set_first_child(p, next)
                     .expect("Failed to set first child for parent node");
             } else {
                 let mut curr = first;
                 while let Some(next) = dom.get_next_sibling(curr) {
                     if next == *target {
-                        dom.set_next_sibling(curr, self.0.borrow().get_next_sibling(*target))
+                        let target_next = dom.get_next_sibling(*target);
+                        dom.set_next_sibling(curr, target_next)
                             .expect("Failed to set next sibling for current node");
                         break;
                     }
@@ -248,6 +249,8 @@ impl TreeSink for HtmlDom {
                 }
             }
         }
+        dom.clear_parent(*target)
+            .expect("Failed to clear parent for target node");
         dom.set_next_sibling(*target, None)
             .expect("Failed to clear next sibling for target node");
     }
@@ -380,5 +383,84 @@ mod tests {
             impossible_second_child.is_none(),
             "Div should not have a second child"
         );
+    }
+
+    #[test]
+    fn test_append_before_sibling_moves_node_between_parents() {
+        let html_dom = HtmlDom::new();
+        let document = html_dom.get_document();
+
+        let source = html_dom
+            .0
+            .borrow_mut()
+            .add_element(get_tag_index("div"), None);
+        let destination = html_dom
+            .0
+            .borrow_mut()
+            .add_element(get_tag_index("div"), None);
+
+        let source_first = html_dom
+            .0
+            .borrow_mut()
+            .add_element(get_tag_index("span"), None);
+        let moving = html_dom
+            .0
+            .borrow_mut()
+            .add_element(get_tag_index("span"), None);
+        let source_last = html_dom
+            .0
+            .borrow_mut()
+            .add_element(get_tag_index("span"), None);
+
+        let destination_first = html_dom
+            .0
+            .borrow_mut()
+            .add_element(get_tag_index("span"), None);
+        let target = html_dom
+            .0
+            .borrow_mut()
+            .add_element(get_tag_index("span"), None);
+        let destination_last = html_dom
+            .0
+            .borrow_mut()
+            .add_element(get_tag_index("span"), None);
+
+        html_dom.append(&document, NodeOrText::AppendNode(source));
+        html_dom.append(&document, NodeOrText::AppendNode(destination));
+
+        // Initial source child chain: source_first -> moving -> source_last.
+        html_dom.append(&source, NodeOrText::AppendNode(source_first));
+        html_dom.append(&source, NodeOrText::AppendNode(moving));
+        html_dom.append(&source, NodeOrText::AppendNode(source_last));
+
+        // Initial destination child chain: destination_first -> target -> destination_last.
+        html_dom.append(&destination, NodeOrText::AppendNode(destination_first));
+        html_dom.append(&destination, NodeOrText::AppendNode(target));
+        html_dom.append(&destination, NodeOrText::AppendNode(destination_last));
+
+        html_dom.append_before_sibling(&target, NodeOrText::AppendNode(moving));
+
+        let dom = html_dom.0.borrow();
+
+        // Verify the source chain no longer contains moving.
+        assert_eq!(dom.get_first_child(source), Some(source_first));
+        assert_eq!(dom.get_next_sibling(source_first), Some(source_last));
+        assert_eq!(dom.get_next_sibling(source_last), None);
+
+        // Verify the destination chain is destination_first -> moving -> target -> destination_last.
+        assert_eq!(dom.get_first_child(destination), Some(destination_first));
+        assert_eq!(dom.get_next_sibling(destination_first), Some(moving));
+        assert_eq!(dom.get_next_sibling(moving), Some(target));
+        assert_eq!(dom.get_next_sibling(target), Some(destination_last));
+        assert_eq!(dom.get_next_sibling(destination_last), None);
+
+        // Verify the parent pointers are consistent with the child chains.
+        assert_eq!(dom.get_parent(source_first), Some(source));
+        assert_eq!(dom.get_parent(source_last), Some(source));
+
+        assert_eq!(dom.get_parent(destination_first), Some(destination));
+        assert_eq!(dom.get_parent(moving), Some(destination));
+        assert_eq!(dom.get_parent(target), Some(destination));
+        assert_eq!(dom.get_parent(destination_last), Some(destination));
     }
 }
