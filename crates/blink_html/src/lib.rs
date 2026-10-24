@@ -76,12 +76,14 @@ impl TreeSink for HtmlDom {
         dom.add_element(tag, attrs_payload)
     }
 
-    fn create_comment(&self, _text: StrTendril) -> Self::Handle {
-        self.0.borrow_mut().add_text(0)
+    fn create_comment(&self, text: StrTendril) -> Self::Handle {
+        self.0.borrow_mut().add_comment(text.to_string().as_str())
     }
 
-    fn create_pi(&self, _target: StrTendril, _data: StrTendril) -> Self::Handle {
-        self.0.borrow_mut().add_text(0)
+    fn create_pi(&self, target: StrTendril, data: StrTendril) -> Self::Handle {
+        self.0
+            .borrow_mut()
+            .add_pi(target.to_string().as_str(), data.to_string().as_str())
     }
 
     fn append(&self, parent: &Self::Handle, child: NodeOrText<Self::Handle>) {
@@ -100,17 +102,19 @@ impl TreeSink for HtmlDom {
             NodeOrText::AppendNode(node) => node,
             NodeOrText::AppendText(text) => {
                 if let Some(last_child_id) = last_child
-                    && let Some(last_child) = dom.get_node(last_child_id)
-                    && last_child.kind.is_text()
+                    && dom
+                        .get_node(last_child_id)
+                        .is_some_and(|node| node.kind.is_text())
                 {
                     // append to the last text node instead of creating a new one
-                    last_child_id
-                } else {
-                    let text_id = text.len() as u32; // Replace with proper text id
-                    dom.add_text(text_id)
+                    dom.append_text(last_child_id, text.to_string().as_str())
+                        .expect("Failed to append text to last text node");
+                    return;
                 }
+                dom.add_text(text.to_string().as_str())
             }
         };
+
         dom.set_parent(child_handle, *parent)
             .expect("Failed to set parent for child node");
 
@@ -162,8 +166,7 @@ impl TreeSink for HtmlDom {
         let new_handle = match new_node {
             NodeOrText::AppendNode(node) => node,
             NodeOrText::AppendText(text) => {
-                let text_id = text.len() as u32;
-                dom.add_text(text_id)
+                dom.add_text(text.to_string().as_str()) // TODO: handle merging with previous text nodes
             }
         };
 
@@ -272,7 +275,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_merge_adjacent_text_nodes() {
+    fn test_merge_adjacent_text_nodes_indirect() {
         let html = r#"
         <div>
             Hello,
@@ -320,6 +323,41 @@ mod tests {
         assert!(
             impossible_fourth_child.is_none(),
             "Div should not have a fourth child"
+        );
+    }
+
+    #[test]
+    fn test_merge_adjacent_text_nodes_direct() {
+        let html_dom = HtmlDom::new();
+        let document = html_dom.get_document();
+
+        let div = html_dom
+            .0
+            .borrow_mut()
+            .add_element(get_tag_index("div"), None);
+
+        html_dom.append(&document, NodeOrText::AppendNode(div));
+
+        html_dom.append(&div, NodeOrText::AppendText("Hello, ".into()));
+        html_dom.append(&div, NodeOrText::AppendText("World".into()));
+
+        let dom = html_dom.0.borrow();
+
+        assert_eq!(dom.get_tag(div).unwrap(), get_tag_index("div"));
+
+        // Check that the div has three children: text, span, text
+        let first_child = dom
+            .get_first_child(div)
+            .expect("Div should have a first child");
+
+        assert!(dom.get_tag(first_child).is_none(), "Expected a text node"); // Text node
+
+        assert_eq!(dom.get_text(first_child).unwrap(), "Hello, World");
+
+        let impossible_second_child = dom.get_next_sibling(first_child);
+        assert!(
+            impossible_second_child.is_none(),
+            "Div should not have a second child"
         );
     }
 }

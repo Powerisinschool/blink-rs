@@ -3,7 +3,7 @@ use crate::geom::{PhysicalOffset, PhysicalRect, PhysicalSize};
 use crate::space::ConstraintSpace;
 use crate::style::{Display, compute_style};
 use blink_css::CSSStyleSheet;
-use blink_dom::{Dom, DomNodeId, NodeKind};
+use blink_dom::{Dom, DomNodeId};
 
 pub fn build_layout_tree(
     root_id: DomNodeId,
@@ -44,10 +44,9 @@ fn walk_node(
     space: ConstraintSpace,
     arena: &mut FragmentArena,
 ) -> Option<LayoutFragmentId> {
-    if matches!(
-        dom.get_node(node_id).map(|n| &n.kind),
-        Some(NodeKind::Text {})
-    ) {
+    if let Some(node) = dom.get_node(node_id).map(|n| &n.kind)
+        && node.is_text()
+    {
         return None;
     }
 

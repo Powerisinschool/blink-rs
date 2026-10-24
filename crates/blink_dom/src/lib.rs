@@ -1,3 +1,6 @@
+mod slot_store;
+
+use crate::slot_store::{SlotId, SlotStore};
 use blink_core::generator::GEN_DEAD;
 use markup5ever::{Attribute, QualName, ns};
 use std::collections::HashMap;
@@ -140,11 +143,21 @@ pub fn get_tag_name(tag: u8) -> &'static str {
     }
 }
 
+#[derive(Debug)]
+pub struct CharacterDataTag;
+pub type CharacterDataId = SlotId<CharacterDataTag>;
+
+#[derive(Debug)]
+pub struct AttrTag;
+pub type AttrId = SlotId<AttrTag>;
+
 pub struct Dom {
     nodes: Vec<DomNode>,
     free_slots: Vec<u32>,
-    pub attribute_table: Vec<Option<Box<[Attribute]>>>,
-    free_attrs: Vec<AttrId>,
+
+    attribute_store: SlotStore<Box<[Attribute]>, AttrTag>,
+    character_data: SlotStore<String, CharacterDataTag>,
+
     pub tag_registry: HashMap<u8, Box<QualName>>,
 }
 
@@ -169,13 +182,16 @@ impl fmt::Debug for Dom {
             .map(|(i, node)| IndexedNode { index: i + 1, node })
             .collect();
 
-        f.debug_struct("Dom").field("nodes", &indexed_list).finish()
+        f.debug_struct("Dom")
+            .field("nodes", &indexed_list)
+            .field("attributes", &self.attribute_store)
+            .field("character_data", &self.character_data)
+            .finish()
     }
 }
 
-pub struct AttrTag;
-pub type AttrId = blink_core::base::Id<AttrTag>;
-
+// TODO: Consider using a more compact representation for NodeKind to save memory, especially for large DOM trees. For example, we could use a single byte to represent the kind and use bitfields for additional information.
+// TODO: Make NodeKind private to the Dom module, and provide public methods on Dom for interacting with nodes. This will encapsulate the implementation details and allow for future changes without breaking external code.
 pub enum NodeKind {
     Element {
         tag: u8, // Easily fits the indices for the ~150 HTML tags
@@ -183,7 +199,14 @@ pub enum NodeKind {
         attrs: Option<AttrId>,
     },
     Text {
-        // text_id: u32
+        text_id: CharacterDataId,
+    },
+    Comment {
+        text_id: CharacterDataId,
+    },
+    ProcessingInstruction {
+        target_id: CharacterDataId,
+        data_id: CharacterDataId,
     },
     EmptyLeaf {
         tag: u8, // Easily fits the indices for the ~150 HTML tags
@@ -215,7 +238,7 @@ impl fmt::Debug for NodeKind {
 
                 debug.finish()
             }
-            NodeKind::Text { .. } => f.debug_struct("Text").finish(),
+            NodeKind::Text { text_id } => f.debug_struct("Text").field("text_id", text_id).finish(),
             NodeKind::EmptyLeaf { tag, attrs } => {
                 let mut debug = f.debug_struct("EmptyLeaf");
 
@@ -226,6 +249,14 @@ impl fmt::Debug for NodeKind {
 
                 debug.field("tag_str", &get_tag_name(*tag)).finish()
             }
+            NodeKind::Comment { text_id } => {
+                f.debug_struct("Comment").field("text_id", text_id).finish()
+            }
+            NodeKind::ProcessingInstruction { target_id, data_id } => f
+                .debug_struct("ProcessingInstruction")
+                .field("target_id", target_id)
+                .field("data_id", data_id)
+                .finish(),
             NodeKind::Free => f.debug_struct("Free").finish(),
         }
     }
@@ -288,8 +319,10 @@ impl Dom {
         Self {
             nodes: Vec::with_capacity(512),
             free_slots: Vec::with_capacity(128),
-            attribute_table: Vec::with_capacity(512),
-            free_attrs: Vec::with_capacity(128),
+            // attribute_table: Vec::with_capacity(512),
+            // free_attrs: Vec::with_capacity(128),
+            attribute_store: SlotStore::with_capacity(512),
+            character_data: SlotStore::with_capacity(512),
             tag_registry: HashMap::new(),
         }
     }
@@ -298,16 +331,9 @@ impl Dom {
         self.ensure_tag_registered(tag);
         let node_idx = self.nodes.len();
 
-        let attrs = attrs
+        let attrs: Option<AttrId> = attrs
             .filter(|a| !a.is_empty())
-            .map(|a| {
-                if let Some(new_attr_id) = self.alloc_attrs(None) {
-                    self.attribute_table[new_attr_id.get_index()] = Some(a);
-                    Some(new_attr_id)
-                } else {
-                    None
-                }
-            })
+            .map(|a| self.attribute_store.insert(a))
             .unwrap_or_default();
 
         let mut kind = match get_tag_name(tag) {
@@ -333,10 +359,84 @@ impl Dom {
         DomNodeId::new(node_idx, 0).unwrap()
     }
 
-    pub fn add_text(&mut self, _text_id: u32) -> DomNodeId {
-        let mut kind = NodeKind::Text {
-            // text_id
+    pub fn add_text(&mut self, contents: &str) -> DomNodeId {
+        let text_id: CharacterDataId = self
+            .character_data
+            .insert(contents)
+            .expect("Failed to insert text into character data store");
+
+        let mut kind = NodeKind::Text { text_id };
+
+        kind = match self.use_free_slot(kind) {
+            Ok(id) => return id,
+            Err(kind) => kind,
         };
+
+        let node_idx = self.nodes.len();
+
+        self.nodes.push(DomNode {
+            parent: None,
+            next_sibling: None,
+            generation: 0,
+            kind,
+        });
+        DomNodeId::new(node_idx, 0).unwrap()
+    }
+
+    pub fn append_text(&mut self, node: DomNodeId, contents: &str) -> Result<(), String> {
+        let node = if let Some(node) = self.live(node) {
+            node
+        } else {
+            return Err("Node is not live".to_string());
+        };
+
+        if let NodeKind::Text { text_id } = &node.kind {
+            if let Some(entry) = self.character_data.get_mut(*text_id) {
+                entry.push_str(contents);
+                Ok(())
+            } else {
+                Err("Text ID not found in character data store".to_string())
+            }
+        } else {
+            Err("Node is not a text node".to_string())
+        }
+    }
+
+    pub fn add_comment(&mut self, comment: &str) -> DomNodeId {
+        let text_id = self
+            .character_data
+            .insert(comment)
+            .expect("Failed to insert comment into character data store");
+
+        let mut kind = NodeKind::Comment { text_id };
+
+        kind = match self.use_free_slot(kind) {
+            Ok(id) => return id,
+            Err(kind) => kind,
+        };
+
+        let node_idx = self.nodes.len();
+
+        self.nodes.push(DomNode {
+            parent: None,
+            next_sibling: None,
+            generation: 0,
+            kind,
+        });
+        DomNodeId::new(node_idx, 0).unwrap()
+    }
+
+    pub fn add_pi(&mut self, target: &str, data: &str) -> DomNodeId {
+        let target_id = self
+            .character_data
+            .insert(target)
+            .expect("Failed to insert processing instruction target");
+        let data_id = self
+            .character_data
+            .insert(data)
+            .expect("Failed to insert processing instruction data");
+
+        let mut kind = NodeKind::ProcessingInstruction { target_id, data_id };
 
         kind = match self.use_free_slot(kind) {
             Ok(id) => return id,
@@ -416,31 +516,52 @@ impl Dom {
             let node = self.live_mut(id).ok_or("Node not found")?;
             match &node.kind {
                 NodeKind::Element { attrs, .. } | NodeKind::EmptyLeaf { attrs, .. } => *attrs,
-                NodeKind::Text {} => return Err("Text nodes have no attributes".into()),
+                NodeKind::Comment { .. } => return Err("Comment nodes have no attributes".into()),
+                NodeKind::ProcessingInstruction { .. } => {
+                    return Err("Processing instruction nodes have no attributes".into());
+                }
+                NodeKind::Text { .. } => return Err("Text nodes have no attributes".into()),
                 NodeKind::Free => return Err("Free nodes have no attributes".into()),
             }
         };
 
-        if new.is_none() {
+        let Some(new) = new else {
+            return Ok(());
+        };
+
+        if new.is_empty() {
+            if let Some(attr_id) = current_attr_id {
+                self.attribute_store
+                    .remove(attr_id)
+                    .ok_or("Failed to remove attributes")?;
+
+                let node = self.live_mut(id).ok_or("Node not found")?;
+
+                match &mut node.kind {
+                    NodeKind::Element { attrs, .. } | NodeKind::EmptyLeaf { attrs, .. } => {
+                        *attrs = None;
+                    }
+                    _ => unreachable!(), // We already validated the type at the start
+                }
+            }
+
             return Ok(());
         }
 
-        let next_attr_id = self.alloc_attrs(current_attr_id);
+        if let Some(curr) = current_attr_id {
+            // There is an existing attribute declaration, so we replace the value
+            self.attribute_store.replace(curr, new);
+            return Ok(());
+        }
 
-        match (new.filter(|a| !a.is_empty()), next_attr_id) {
-            (Some(list), Some(id)) => self.attribute_table[id.get_index()] = Some(list),
-            (None, Some(existing)) => self.attribute_table[existing.get_index()] = None,
-            (_, None) => return Err("Failed to allocate attributes".into()),
-        };
-
-        if current_attr_id != next_attr_id {
-            let node = self.live_mut(id).ok_or("Node not found")?;
-            match &mut node.kind {
-                NodeKind::Element { attrs, .. } | NodeKind::EmptyLeaf { attrs, .. } => {
-                    *attrs = next_attr_id
-                }
-                _ => unreachable!(), // We already validated the type at the start
+        // There is no existing attribute, so we insert
+        let new_attr_id = self.attribute_store.insert(new);
+        let node = self.live_mut(id).ok_or("Node not found")?;
+        match &mut node.kind {
+            NodeKind::Element { attrs, .. } | NodeKind::EmptyLeaf { attrs, .. } => {
+                *attrs = new_attr_id
             }
+            _ => unreachable!(), // We already validated the type at the start
         }
 
         Ok(())
@@ -478,15 +599,26 @@ impl Dom {
     pub fn get_attributes(&self, id: DomNodeId) -> Option<&[Attribute]> {
         match self.live(id)?.kind {
             NodeKind::EmptyLeaf {
-                attrs: Some(attrs_id),
+                attrs: Some(attr_id),
                 ..
             }
             | NodeKind::Element {
-                attrs: Some(attrs_id),
+                attrs: Some(attr_id),
                 ..
-            } => self.attribute_table.get(attrs_id.get_index())?.as_deref(),
+            } => self
+                .attribute_store
+                .get(attr_id)
+                .map(|attrs| attrs.as_ref()),
             _ => None,
         }
+    }
+
+    pub fn get_text(&self, id: DomNodeId) -> Option<String> {
+        let NodeKind::Text { text_id } = &self.live(id)?.kind else {
+            return None;
+        };
+
+        self.character_data.get(*text_id).map(|s| s.to_string())
     }
 
     pub fn get_tag(&self, id: DomNodeId) -> Option<u8> {
@@ -544,21 +676,21 @@ impl Dom {
         Err(kind)
     }
 
-    fn alloc_attrs(&mut self, old_attr_id: Option<AttrId>) -> Option<AttrId> {
-        if let Some(a) = old_attr_id
-            && self.attribute_table.len() > a.get_index()
-        {
-            return Some(a);
-        }
-
-        if let Some(a) = self.free_attrs.pop() {
-            return Some(a);
-        }
-
-        let a = AttrId::from_usize(self.attribute_table.len())?;
-        self.attribute_table.push(None);
-        Some(a)
-    }
+    // fn alloc_attrs(&mut self, old_attr_id: Option<AttrId>) -> Option<AttrId> {
+    //     if let Some(a) = old_attr_id
+    //         && self.attribute_table.len() > a.get_index()
+    //     {
+    //         return Some(a);
+    //     }
+    //
+    //     if let Some(a) = self.free_attrs.pop() {
+    //         return Some(a);
+    //     }
+    //
+    //     let a = AttrId::from_usize(self.attribute_table.len())?;
+    //     self.attribute_table.push(None);
+    //     Some(a)
+    // }
 
     #[allow(dead_code)]
     fn free(&mut self, id: DomNodeId) -> bool {
@@ -571,12 +703,17 @@ impl Dom {
         node.generation += 1;
 
         let retire = node.generation as u32 >= GEN_DEAD;
+
         if let NodeKind::Element { attrs: Some(a), .. }
         | NodeKind::EmptyLeaf { attrs: Some(a), .. } = old
         {
-            self.attribute_table[a.get_index()] = None;
-            self.free_attrs.push(a); // new field: Vec<AttrId>
+            self.attribute_store.remove(a);
         }
+
+        if let NodeKind::Text { text_id } = old {
+            self.character_data.remove(text_id);
+        }
+
         if !retire {
             self.free_slots.push(id.slot() as u32);
         }

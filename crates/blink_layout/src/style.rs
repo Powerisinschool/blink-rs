@@ -99,7 +99,7 @@ fn match_compound(node_id: DomNodeId, dom: &Dom, parts: &[Selector]) -> bool {
                         let tag_name = get_tag_name(*tag);
                         target_tag == tag_name
                     }
-                    NodeKind::Free | NodeKind::Text {} => false,
+                    _ => false,
                 };
                 if !is_match {
                     return false;
@@ -408,8 +408,8 @@ mod tests {
     #[test]
     fn test_attributes_survive_text_nodes() {
         let mut dom = Dom::new();
-        let div = blink_dom::get_tag_index("div");
-        let _text = dom.add_text(0);
+        let div = get_tag_index("div");
+        let _text = dom.add_text("blah");
         let el = dom.add_element(div, Some(vec![make_attr("id", "x")].into_boxed_slice()));
         assert!(
             dom.get_attributes(el)
@@ -425,7 +425,7 @@ mod tests {
         let br = get_tag_index("br");
         let div = get_tag_index("div");
         dom.add_element(br, None);
-        dom.add_text(0);
+        dom.add_text("blah");
         let el = dom.add_element(div, Some(vec![make_attr("id", "x")].into_boxed_slice()));
         assert!(
             dom.get_attributes(el)
