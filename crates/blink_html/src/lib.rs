@@ -161,8 +161,6 @@ impl TreeSink for HtmlDom {
     }
 
     fn append_before_sibling(&self, sibling: &Self::Handle, new_node: NodeOrText<Self::Handle>) {
-        let mut dom = self.0.borrow_mut();
-
         let (new_handle, text) = match new_node {
             NodeOrText::AppendNode(node) => {
                 self.remove_from_parent(&node);
@@ -170,6 +168,8 @@ impl TreeSink for HtmlDom {
             }
             NodeOrText::AppendText(text) => (None, Some(text)),
         };
+
+        let mut dom = self.0.borrow_mut();
 
         let parent_opt = dom.get_parent(*sibling);
         if let Some(parent) = parent_opt {
