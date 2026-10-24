@@ -44,9 +44,7 @@ fn walk_node(
     space: ConstraintSpace,
     arena: &mut FragmentArena,
 ) -> Option<LayoutFragmentId> {
-    if let Some(node) = dom.get_node(node_id).map(|n| &n.kind)
-        && node.is_text()
-    {
+    if dom.get_node(node_id).is_some_and(|node| node.is_text()) {
         return None;
     }
 
