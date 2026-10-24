@@ -477,6 +477,15 @@ impl Dom {
         }
     }
 
+    pub fn clear_parent(&mut self, node: DomNodeId) -> Result<(), String> {
+        if let Some(n) = self.live_mut(node) {
+            n.parent = None;
+            Ok(())
+        } else {
+            Err("given node is not valid".into())
+        }
+    }
+
     pub fn set_first_child(
         &mut self,
         parent: DomNodeId,

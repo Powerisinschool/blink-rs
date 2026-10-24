@@ -243,13 +243,14 @@ impl TreeSink for HtmlDom {
                         let target_next = dom.get_next_sibling(*target);
                         dom.set_next_sibling(curr, target_next)
                             .expect("Failed to set next sibling for current node");
-                        // dom.set_parent(next, None);
                         break;
                     }
                     curr = next;
                 }
             }
         }
+        dom.clear_parent(*target)
+            .expect("Failed to clear parent for target node");
         dom.set_next_sibling(*target, None)
             .expect("Failed to clear next sibling for target node");
     }
