@@ -165,9 +165,7 @@ impl TreeSink for HtmlDom {
 
         let (new_handle, text) = match new_node {
             NodeOrText::AppendNode(node) => (Some(node), None),
-            NodeOrText::AppendText(text) => {
-                (None, Some(text))
-            }
+            NodeOrText::AppendText(text) => (None, Some(text)),
         };
 
         let parent_opt = dom.get_parent(*sibling);
