@@ -234,9 +234,6 @@ impl TreeSink for HtmlDom {
         {
             if first == *target {
                 let next = dom.get_next_sibling(*target);
-                // if let Some(n) = next {
-                //     dom.set_first_child(p, Some(n));
-                // }
                 dom.set_first_child(p, next)
                     .expect("Failed to set first child for parent node");
             } else {
