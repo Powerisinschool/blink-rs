@@ -164,7 +164,10 @@ impl TreeSink for HtmlDom {
         let mut dom = self.0.borrow_mut();
 
         let (new_handle, text) = match new_node {
-            NodeOrText::AppendNode(node) => (Some(node), None),
+            NodeOrText::AppendNode(node) => {
+                self.remove_from_parent(&node);
+                (Some(node), None)
+            },
             NodeOrText::AppendText(text) => (None, Some(text)),
         };
 
@@ -240,8 +243,10 @@ impl TreeSink for HtmlDom {
                 let mut curr = first;
                 while let Some(next) = dom.get_next_sibling(curr) {
                     if next == *target {
-                        dom.set_next_sibling(curr, self.0.borrow().get_next_sibling(*target))
+                        let target_next = dom.get_next_sibling(*target);
+                        dom.set_next_sibling(curr, target_next)
                             .expect("Failed to set next sibling for current node");
+                        // dom.set_parent(next, None);
                         break;
                     }
                     curr = next;
