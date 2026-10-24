@@ -191,8 +191,7 @@ impl fmt::Debug for Dom {
 }
 
 // TODO: Consider using a more compact representation for NodeKind to save memory, especially for large DOM trees. For example, we could use a single byte to represent the kind and use bitfields for additional information.
-// TODO: Make NodeKind private to the Dom module, and provide public methods on Dom for interacting with nodes. This will encapsulate the implementation details and allow for future changes without breaking external code.
-pub enum NodeKind {
+enum NodeKind {
     Element {
         tag: u8, // Easily fits the indices for the ~150 HTML tags
         first_child: Option<DomNodeId>,
@@ -262,24 +261,6 @@ impl fmt::Debug for NodeKind {
     }
 }
 
-impl NodeKind {
-    pub fn is_element(&self) -> bool {
-        matches!(self, NodeKind::Element { .. })
-    }
-
-    pub fn is_text(&self) -> bool {
-        matches!(self, NodeKind::Text { .. })
-    }
-
-    pub fn is_empty_leaf(&self) -> bool {
-        matches!(self, NodeKind::EmptyLeaf { .. })
-    }
-
-    pub fn is_alive(&self) -> bool {
-        !matches!(self, NodeKind::Free)
-    }
-}
-
 pub struct DomNodeTag;
 pub type DomNodeId = blink_core::generator::GenId<DomNodeTag>;
 
@@ -287,7 +268,7 @@ pub struct DomNode {
     parent: Option<DomNodeId>,
     next_sibling: Option<DomNodeId>,
     generation: u16,
-    pub kind: NodeKind,
+    kind: NodeKind,
 }
 
 impl fmt::Debug for DomNode {
@@ -302,6 +283,35 @@ impl fmt::Debug for DomNode {
             None => debug.field("next_sibling", &None::<DomNodeId>),
         };
         debug.field("kind", &self.kind).finish()
+    }
+}
+
+impl DomNode {
+    pub fn is_element(&self) -> bool {
+        matches!(self.kind, NodeKind::Element { .. })
+    }
+
+    pub fn is_text(&self) -> bool {
+        matches!(self.kind, NodeKind::Text { .. })
+    }
+
+    pub fn is_empty_leaf(&self) -> bool {
+        matches!(self.kind, NodeKind::EmptyLeaf { .. })
+    }
+
+    pub fn is_alive(&self) -> bool {
+        !matches!(self.kind, NodeKind::Free)
+    }
+
+    pub fn get_tag(&self) -> Option<u8> {
+        match self.kind {
+            NodeKind::Element { tag, .. } | NodeKind::EmptyLeaf { tag, .. } => Some(tag),
+            _ => None,
+        }
+    }
+
+    pub fn get_tag_name(&self) -> Option<&str> {
+        Some(get_tag_name(self.get_tag()?))
     }
 }
 

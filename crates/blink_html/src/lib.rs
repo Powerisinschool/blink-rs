@@ -104,7 +104,7 @@ impl TreeSink for HtmlDom {
                 if let Some(last_child_id) = last_child
                     && dom
                         .get_node(last_child_id)
-                        .is_some_and(|node| node.kind.is_text())
+                        .is_some_and(|node| node.is_text())
                 {
                     // append to the last text node instead of creating a new one
                     dom.append_text(last_child_id, text.to_string().as_str())

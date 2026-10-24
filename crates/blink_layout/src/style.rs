@@ -1,5 +1,5 @@
 use blink_css::{CSSStyleRule, CSSStyleSheet, Selector};
-use blink_dom::{Dom, DomNodeId, NodeKind, get_tag_name};
+use blink_dom::{Dom, DomNodeId, get_tag_name};
 use markup5ever::local_name;
 
 #[derive(Debug, Clone)]
@@ -94,14 +94,7 @@ fn match_compound(node_id: DomNodeId, dom: &Dom, parts: &[Selector]) -> bool {
                     Some(n) => n,
                     None => return false,
                 };
-                let is_match = match &node.kind {
-                    NodeKind::Element { tag, .. } | NodeKind::EmptyLeaf { tag, .. } => {
-                        let tag_name = get_tag_name(*tag);
-                        target_tag == tag_name
-                    }
-                    _ => false,
-                };
-                if !is_match {
+                if node.get_tag_name().is_none_or(|tag| tag != *target_tag) {
                     return false;
                 }
             }
@@ -140,17 +133,16 @@ fn match_compound(node_id: DomNodeId, dom: &Dom, parts: &[Selector]) -> bool {
 }
 
 fn default_display(node_id: DomNodeId, dom: &Dom) -> Display {
-    match dom.get_node(node_id).map(|n| &n.kind) {
-        Some(NodeKind::Element { tag, .. }) | Some(NodeKind::EmptyLeaf { tag, .. }) => {
-            match get_tag_name(*tag) {
-                "head" | "script" | "style" | "title" | "meta" | "link" => Display::None,
-                "document" | "html" | "body" | "div" | "p" | "section" | "ul" | "li" => {
-                    Display::Block
-                }
-                _ => Display::Inline,
-            }
+    if let Some(node) = dom.get_node(node_id)
+        && let Some(tag) = node.get_tag()
+    {
+        match get_tag_name(tag) {
+            "head" | "script" | "style" | "title" | "meta" | "link" => Display::None,
+            "document" | "html" | "body" | "div" | "p" | "section" | "ul" | "li" => Display::Block,
+            _ => Display::Inline,
         }
-        _ => Display::Inline,
+    } else {
+        Display::Inline
     }
 }
 
