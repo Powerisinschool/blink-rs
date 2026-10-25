@@ -2,11 +2,76 @@ use blink_css::{CSSStyleRule, CSSStyleSheet, Selector};
 use blink_dom::{Dom, DomNodeId, get_tag_name};
 use markup5ever::local_name;
 
-#[derive(Debug, Clone)]
-pub enum Display {
+// https://drafts.csswg.org/css-display/#the-display-properties
+// https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Properties/display
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DisplayOutside {
     Block,
-    InlineBlock,
+    Inline,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DisplayInside {
+    Flow,
+    FlowRoot,
+    Table,
+    Flex,
+    Grid,
+    GridLanes,
+    Ruby,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Display {
     None,
+    Box {
+        outside: DisplayOutside,
+        inside: DisplayInside,
+        list_item: bool,
+    },
+}
+
+impl Default for Display {
+    fn default() -> Self {
+        Display::INLINE
+    }
+}
+
+impl Display {
+    pub const BLOCK: Self = Display::Box {
+        outside: DisplayOutside::Block,
+        inside: DisplayInside::Flow,
+        list_item: false,
+    };
+    pub const INLINE: Self = Display::Box {
+        outside: DisplayOutside::Inline,
+        inside: DisplayInside::Flow,
+        list_item: false,
+    };
+    pub const INLINE_BLOCK: Self = Display::Box {
+        outside: DisplayOutside::Inline,
+        inside: DisplayInside::FlowRoot,
+        list_item: false,
+    };
+
+    pub fn outside(self) -> Option<DisplayOutside> {
+        match self {
+            Display::Box { outside, .. } => Some(outside),
+            _ => None,
+        }
+    }
+
+    pub fn inside(self) -> Option<DisplayInside> {
+        match self {
+            Display::Box { inside, .. } => Some(inside),
+            _ => None,
+        }
+    }
+
+    pub fn is_none(self) -> bool {
+        self == Display::None
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -138,11 +203,21 @@ fn default_display(node_id: DomNodeId, dom: &Dom) -> Display {
     {
         match get_tag_name(tag) {
             "head" | "script" | "style" | "title" | "meta" | "link" => Display::None,
-            "document" | "html" | "body" | "div" | "p" | "section" | "ul" | "li" => Display::Block,
-            _ => Display::InlineBlock,
+            "document" | "html" | "body" | "div" | "p" | "section" | "ul" | "li" => Display::BLOCK,
+            _ => Display::INLINE_BLOCK,
         }
     } else {
-        Display::InlineBlock
+        Display::INLINE_BLOCK
+    }
+}
+
+fn parse_display(value: &str) -> Option<Display> {
+    match value {
+        "none" => Some(Display::None),
+        "block" => Some(Display::BLOCK),
+        "inline" => Some(Display::INLINE),
+        "inline-block" => Some(Display::INLINE_BLOCK),
+        _ => None,
     }
 }
 
@@ -156,12 +231,12 @@ fn cascade_properties(
     let mut height = None;
 
     for rule in matched_rules {
-        if let Some(d) = rule.properties.get("display") {
-            display = match d.as_str() {
-                "block" => Display::Block,
-                "none" => Display::None,
-                _ => Display::InlineBlock,
-            };
+        if let Some(d) = rule
+            .properties
+            .get("display")
+            .and_then(|v| parse_display(v))
+        {
+            display = d;
         }
 
         if let Some(w) = rule.properties.get("width") {
@@ -317,7 +392,7 @@ mod tests {
             "Should match the full multi-level ancestor chain"
         );
 
-        // 4. Failing missing ancestor
+        // Failing missing ancestor
         let rule_fail = get_first_rule("nav .card { color: blue; }");
         assert!(
             !matches_selector(p_node, &dom, &rule_fail),
@@ -327,11 +402,9 @@ mod tests {
 
     #[test]
     fn test_parse_px_value_edge_cases() {
-        // Standard conversions
         assert_eq!(parse_px_value("100px"), Some(100.0));
         assert_eq!(parse_px_value("50.5px"), Some(50.5));
 
-        // Whitespace tolerance
         assert_eq!(parse_px_value("  200  px  "), Some(200.0));
         assert_eq!(parse_px_value(" 300 "), Some(300.0));
 
@@ -385,8 +458,9 @@ mod tests {
             "Height should be inherited from the base tag rule"
         );
 
-        assert!(
-            matches!(computed.display, Display::Block),
+        assert_eq!(
+            computed.display,
+            Display::BLOCK,
             "Class rule should override Tag rule for display"
         );
 
@@ -425,5 +499,14 @@ mod tests {
                 .iter()
                 .any(|a| a.value.as_ref() == "x")
         );
+    }
+
+    #[test]
+    fn test_parse_display() {
+        assert_eq!(parse_display("none"), Some(Display::None));
+        assert_eq!(parse_display("block"), Some(Display::BLOCK));
+        assert_eq!(parse_display("inline"), Some(Display::INLINE));
+        assert_eq!(parse_display("inline-block"), Some(Display::INLINE_BLOCK));
+        assert_eq!(parse_display("unknown"), None);
     }
 }
