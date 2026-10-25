@@ -1,7 +1,7 @@
 use crate::fragment::{FragmentArena, LayoutFragment, LayoutFragmentId};
 use crate::geom::{PhysicalOffset, PhysicalRect, PhysicalSize};
 use crate::space::ConstraintSpace;
-use crate::style::{Display, compute_style};
+use crate::style::{DisplayOutside, compute_style};
 use blink_css::CSSStyleSheet;
 use blink_dom::{Dom, DomNodeId};
 
@@ -50,16 +50,19 @@ fn walk_node(
 
     let computed_style = compute_style(node_id, dom, stylesheet);
 
-    if matches!(computed_style.display, Display::None) {
+    if computed_style.display.is_none() {
         return None;
     }
 
     let node_width = computed_style.width;
     let node_height = computed_style.height;
 
-    let initial_width = node_width.unwrap_or(match computed_style.display {
-        Display::INLINE | Display::INLINE_BLOCK => 0.0,
-        _ => space.available_size.width,
+    let is_inline_level = computed_style.display.outside() == Some(DisplayOutside::Inline);
+
+    let initial_width = node_width.unwrap_or(if is_inline_level {
+        0.0
+    } else {
+        space.available_size.width
     });
 
     let node_size = PhysicalSize::new(initial_width, node_height.unwrap_or_default());
@@ -76,34 +79,46 @@ fn walk_node(
     let mut child_x_cursor = 0.0;
     let mut child_y_cursor = 0.0;
     let mut line_height = 0.0;
+    let mut max_line_width: f32 = 0.0;
+
+    let available_width = node_width.unwrap_or(space.available_size.width);
 
     let child_space = ConstraintSpace {
-        available_size: PhysicalSize::new(initial_width, space.available_size.height),
+        available_size: PhysicalSize::new(available_width, space.available_size.height),
     };
     while let Some(dom_child) = current_dom_child {
         if let Some(fragment_child_id) = walk_node(dom_child, dom, stylesheet, child_space, arena) {
-            let child_id = (fragment_child_id.get() - 1) as usize;
+            let child_id = fragment_child_id.get_index();
 
             let child_width = arena.fragments[child_id].rect.size.width;
             let child_height = arena.fragments[child_id].rect.size.height;
 
-            match arena.fragments[child_id].style.display {
-                Display::BLOCK => {
+            let child_fragment = &mut arena.fragments[child_id];
+
+            match child_fragment.style.display.outside() {
+                Some(DisplayOutside::Block) => {
                     if line_height > 0.0 {
                         child_y_cursor += line_height;
                         line_height = 0.0;
                     }
-                    arena.fragments[child_id].rect.origin.y = child_y_cursor;
+                    child_fragment.rect.origin.y = child_y_cursor;
                     child_x_cursor = 0.0;
                     child_y_cursor += child_height;
+                    max_line_width = max_line_width.max(child_width);
                 }
-                Display::INLINE | Display::INLINE_BLOCK => {
-                    arena.fragments[child_id].rect.origin.x = child_x_cursor;
-                    arena.fragments[child_id].rect.origin.y = child_y_cursor;
-                    child_x_cursor += child_width;
-                    if child_height > line_height {
-                        line_height = child_height;
+                Some(DisplayOutside::Inline) => {
+                    if child_x_cursor > 0.0
+                        && child_x_cursor + child_width > child_space.available_size.width
+                    {
+                        child_y_cursor += line_height;
+                        line_height = 0.0;
+                        child_x_cursor = 0.0;
                     }
+                    child_fragment.rect.origin.x = child_x_cursor;
+                    child_fragment.rect.origin.y = child_y_cursor;
+                    child_x_cursor += child_width;
+                    max_line_width = max_line_width.max(child_x_cursor);
+                    line_height = line_height.max(child_height);
                 }
                 _ => {}
             }
@@ -113,7 +128,7 @@ fn walk_node(
             }
 
             if let Some(previous_id) = previous_child_fragment_id {
-                let previous_idx = (previous_id.get() - 1) as usize;
+                let previous_idx = previous_id.get_index();
                 arena.fragments[previous_idx].set_next_sibling(fragment_child_id);
             }
 
@@ -127,15 +142,10 @@ fn walk_node(
         child_y_cursor += line_height;
     }
 
-    let fragment_idx = (fragment_id.get() - 1) as usize;
+    let fragment_idx = fragment_id.get_index();
 
-    if node_width.is_none()
-        && matches!(
-            arena.fragments[fragment_idx].style.display,
-            Display::INLINE | Display::INLINE_BLOCK
-        )
-    {
-        arena.fragments[fragment_idx].rect.size.width = child_x_cursor;
+    if node_width.is_none() && is_inline_level {
+        arena.fragments[fragment_idx].rect.size.width = max_line_width;
     }
 
     if node_height.is_none() {
@@ -190,6 +200,102 @@ mod tests {
 
         assert_eq!(
             parent_fragment.rect.size.width, 40.0,
+            "Inline element should shrink-wrap its child's width"
+        );
+    }
+
+    #[test]
+    fn test_line_wraps() {
+        let mut dom = Dom::new();
+
+        let parent = dom.add_element(get_tag_index("div"), None);
+
+        let child1 = dom.add_element(get_tag_index("span"), None);
+        let child2 = dom.add_element(get_tag_index("span"), None);
+        let child3 = dom.add_element(get_tag_index("span"), None);
+
+        dom.set_parent(child1, parent)
+            .expect("Failed to set parent");
+        dom.set_parent(child2, parent)
+            .expect("Failed to set parent");
+        dom.set_parent(child3, parent)
+            .expect("Failed to set parent");
+
+        dom.set_first_child(parent, Some(child1))
+            .expect("Failed to set first child");
+        dom.set_next_sibling(child1, Some(child2))
+            .expect("Failed to set next sibling");
+        dom.set_next_sibling(child2, Some(child3))
+            .expect("Failed to set next sibling");
+
+        let mut stylesheet = CSSStyleSheet::new();
+        parse_css_into_stylesheet(
+            r#"
+                div { display: inline; width: 100px; }
+                span { width: 40px; height: 10px; }
+            "#,
+            &mut stylesheet,
+        );
+
+        let space = ConstraintSpace {
+            available_size: PhysicalSize::new(800.0, 600.0),
+        };
+
+        let arena = build_layout_tree(parent, &dom, &stylesheet, space);
+
+        let child1_fragment = arena
+            .fragments
+            .iter()
+            .find(|fragment| fragment.dom_node == Some(child1))
+            .expect("Expected child1 fragment");
+
+        assert_eq!(
+            child1_fragment.rect.origin.x, 0.0,
+            "Inline element should shrink-wrap its child's width"
+        );
+        assert_eq!(
+            child1_fragment.rect.origin.y, 0.0,
+            "Inline element should shrink-wrap its child's width"
+        );
+
+        let child2_fragment = arena
+            .fragments
+            .iter()
+            .find(|fragment| fragment.dom_node == Some(child2))
+            .expect("Expected child2 fragment");
+
+        assert_eq!(
+            child2_fragment.rect.origin.x, 40.0,
+            "Inline element should shrink-wrap its child's width"
+        );
+        assert_eq!(
+            child2_fragment.rect.origin.y, 0.0,
+            "Inline element should shrink-wrap its child's width"
+        );
+
+        let child3_fragment = arena
+            .fragments
+            .iter()
+            .find(|fragment| fragment.dom_node == Some(child3))
+            .expect("Expected child3 fragment");
+
+        assert_eq!(
+            child3_fragment.rect.origin.x, 0.0,
+            "Inline element should shrink-wrap its child's width"
+        );
+        assert_eq!(
+            child3_fragment.rect.origin.y, 10.0,
+            "Inline element should shrink-wrap its child's width"
+        );
+
+        let parent_fragment = arena
+            .fragments
+            .iter()
+            .find(|fragment| fragment.dom_node == Some(parent))
+            .expect("Expected parent fragment");
+
+        assert_eq!(
+            parent_fragment.rect.size.height, 20.0,
             "Inline element should shrink-wrap its child's width"
         );
     }
