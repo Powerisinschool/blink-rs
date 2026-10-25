@@ -58,7 +58,7 @@ fn walk_node(
     let node_height = computed_style.height;
 
     let initial_width = node_width.unwrap_or(match computed_style.display {
-        Display::INLINE_BLOCK => 0.0,
+        Display::INLINE | Display::INLINE_BLOCK => 0.0,
         _ => space.available_size.width,
     });
 
