@@ -287,5 +287,16 @@ mod tests {
             child3_fragment.rect.origin.y, 10.0,
             "Inline element should shrink-wrap its child's width"
         );
+
+        let parent_fragment = arena
+            .fragments
+            .iter()
+            .find(|fragment| fragment.dom_node == Some(parent))
+            .expect("Expected parent fragment");
+
+        assert_eq!(
+            parent_fragment.rect.size.height, 20.0,
+            "Inline element should shrink-wrap its child's width"
+        );
     }
 }
