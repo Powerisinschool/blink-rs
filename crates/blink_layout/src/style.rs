@@ -22,32 +22,14 @@ pub enum DisplayInside {
     Ruby,
 }
 
-// #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-// pub enum DisplayInternal {
-//     TableRowGroup,
-//     TableHeaderGroup,
-//     TableFooterGroup,
-//     TableRow,
-//     TableCell,
-//     TableColumnGroup,
-//     TableColumn,
-//     TableCaption,
-//     RubyBase,
-//     RubyText,
-//     RubyBaseContainer,
-//     RubyTextContainer,
-// }
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Display {
     None,
-    // Contents,
     Box {
         outside: DisplayOutside,
         inside: DisplayInside,
         list_item: bool,
     },
-    // Internal(DisplayInternal),
 }
 
 impl Default for Display {
@@ -235,7 +217,6 @@ fn parse_display(value: &str) -> Option<Display> {
         "block" => Some(Display::BLOCK),
         "inline" => Some(Display::INLINE),
         "inline-block" => Some(Display::INLINE_BLOCK),
-        // "contents" => Some(Display::Contents),
         _ => None,
     }
 }
@@ -411,7 +392,7 @@ mod tests {
             "Should match the full multi-level ancestor chain"
         );
 
-        // 4. Failing missing ancestor
+        // Failing missing ancestor
         let rule_fail = get_first_rule("nav .card { color: blue; }");
         assert!(
             !matches_selector(p_node, &dom, &rule_fail),
@@ -528,7 +509,6 @@ mod tests {
         assert_eq!(parse_display("block"), Some(Display::BLOCK));
         assert_eq!(parse_display("inline"), Some(Display::INLINE));
         assert_eq!(parse_display("inline-block"), Some(Display::INLINE_BLOCK));
-        // assert_eq!(parse_display("contents"), Some(Display::Contents));
         assert_eq!(parse_display("unknown"), None);
     }
 }
