@@ -108,8 +108,8 @@ Unit tests cover selector matching, specificity, descendant chains, length parsi
 
 - [x] Merge adjacent text nodes in the tree builder
 - [ ] Whitespace collapsing and text fragments
-- [ ] Line breaking and wrapping
-- [ ] Rename the current `Inline` to `InlineBlock`; introduce true inline layout
+- [x] Line breaking and wrapping
+- [x] Rename the current `Inline` to `InlineBlock`; introduce true inline layout
 - [ ] Golden tests for all fixtures in `assets/`
 
 ### Phase 2: LayoutNG-style architecture
