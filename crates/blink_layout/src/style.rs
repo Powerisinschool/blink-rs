@@ -402,11 +402,9 @@ mod tests {
 
     #[test]
     fn test_parse_px_value_edge_cases() {
-        // Standard conversions
         assert_eq!(parse_px_value("100px"), Some(100.0));
         assert_eq!(parse_px_value("50.5px"), Some(50.5));
 
-        // Whitespace tolerance
         assert_eq!(parse_px_value("  200  px  "), Some(200.0));
         assert_eq!(parse_px_value(" 300 "), Some(300.0));
 
