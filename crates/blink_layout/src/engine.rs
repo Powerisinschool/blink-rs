@@ -203,4 +203,89 @@ mod tests {
             "Inline element should shrink-wrap its child's width"
         );
     }
+
+    #[test]
+    fn test_line_wraps() {
+        let mut dom = Dom::new();
+
+        let parent = dom.add_element(get_tag_index("div"), None);
+
+        let child1 = dom.add_element(get_tag_index("span"), None);
+        let child2 = dom.add_element(get_tag_index("span"), None);
+        let child3 = dom.add_element(get_tag_index("span"), None);
+
+        dom.set_parent(child1, parent)
+            .expect("Failed to set parent");
+        dom.set_parent(child2, parent)
+            .expect("Failed to set parent");
+        dom.set_parent(child3, parent)
+            .expect("Failed to set parent");
+
+        dom.set_first_child(parent, Some(child1))
+            .expect("Failed to set first child");
+        dom.set_next_sibling(child1, Some(child2))
+            .expect("Failed to set next sibling");
+        dom.set_next_sibling(child2, Some(child3))
+            .expect("Failed to set next sibling");
+
+        let mut stylesheet = CSSStyleSheet::new();
+        parse_css_into_stylesheet(
+            r#"
+                div { display: inline; width: 100px; }
+                span { width: 40px; height: 10px; }
+            "#,
+            &mut stylesheet,
+        );
+
+        let space = ConstraintSpace {
+            available_size: PhysicalSize::new(800.0, 600.0),
+        };
+
+        let arena = build_layout_tree(parent, &dom, &stylesheet, space);
+
+        let child1_fragment = arena
+            .fragments
+            .iter()
+            .find(|fragment| fragment.dom_node == Some(child1))
+            .expect("Expected child1 fragment");
+
+        assert_eq!(
+            child1_fragment.rect.origin.x, 0.0,
+            "Inline element should shrink-wrap its child's width"
+        );
+        assert_eq!(
+            child1_fragment.rect.origin.y, 0.0,
+            "Inline element should shrink-wrap its child's width"
+        );
+
+        let child2_fragment = arena
+            .fragments
+            .iter()
+            .find(|fragment| fragment.dom_node == Some(child2))
+            .expect("Expected child2 fragment");
+
+        assert_eq!(
+            child2_fragment.rect.origin.x, 40.0,
+            "Inline element should shrink-wrap its child's width"
+        );
+        assert_eq!(
+            child2_fragment.rect.origin.y, 0.0,
+            "Inline element should shrink-wrap its child's width"
+        );
+
+        let child3_fragment = arena
+            .fragments
+            .iter()
+            .find(|fragment| fragment.dom_node == Some(child3))
+            .expect("Expected child3 fragment");
+
+        assert_eq!(
+            child3_fragment.rect.origin.x, 0.0,
+            "Inline element should shrink-wrap its child's width"
+        );
+        assert_eq!(
+            child3_fragment.rect.origin.y, 10.0,
+            "Inline element should shrink-wrap its child's width"
+        );
+    }
 }
