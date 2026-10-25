@@ -58,7 +58,7 @@ fn walk_node(
     let node_height = computed_style.height;
 
     let initial_width = node_width.unwrap_or(match computed_style.display {
-        Display::InlineBlock => 0.0,
+        Display::INLINE_BLOCK => 0.0,
         _ => space.available_size.width,
     });
 
@@ -88,7 +88,7 @@ fn walk_node(
             let child_height = arena.fragments[child_id].rect.size.height;
 
             match arena.fragments[child_id].style.display {
-                Display::Block => {
+                Display::BLOCK => {
                     if line_height > 0.0 {
                         child_y_cursor += line_height;
                         line_height = 0.0;
@@ -97,7 +97,7 @@ fn walk_node(
                     child_x_cursor = 0.0;
                     child_y_cursor += child_height;
                 }
-                Display::InlineBlock => {
+                Display::INLINE | Display::INLINE_BLOCK => {
                     arena.fragments[child_id].rect.origin.x = child_x_cursor;
                     arena.fragments[child_id].rect.origin.y = child_y_cursor;
                     child_x_cursor += child_width;
@@ -129,11 +129,7 @@ fn walk_node(
 
     let fragment_idx = (fragment_id.get() - 1) as usize;
 
-    if node_width.is_none()
-        && matches!(
-            arena.fragments[fragment_idx].style.display,
-            Display::InlineBlock
-        )
+    if node_width.is_none() && arena.fragments[fragment_idx].style.display == Display::INLINE_BLOCK
     {
         arena.fragments[fragment_idx].rect.size.width = child_x_cursor;
     }
