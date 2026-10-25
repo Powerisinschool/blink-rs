@@ -212,7 +212,7 @@ fn default_display(node_id: DomNodeId, dom: &Dom) -> Display {
 }
 
 fn parse_display(value: &str) -> Option<Display> {
-    match value {
+    match value.trim() {
         "none" => Some(Display::None),
         "block" => Some(Display::BLOCK),
         "inline" => Some(Display::INLINE),
