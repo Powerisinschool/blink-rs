@@ -1,0 +1,17 @@
+.container {
+    display: block;
+    width: 500px;
+}
+
+.block {
+    display: block;
+}
+
+.inline {
+    display: inline;
+}
+
+.container span {
+    width: 100px;
+    height: 30px;
+}

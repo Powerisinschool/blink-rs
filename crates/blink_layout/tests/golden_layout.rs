@@ -141,3 +141,8 @@ fn basic_page() {
 fn inline_wrapping() {
     assert_golden("inline_wrapping");
 }
+
+#[test]
+fn mixed_block_inline() {
+    assert_golden("mixed_block_inline");
+}
