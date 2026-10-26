@@ -7,13 +7,34 @@ use std::fmt::Formatter;
 pub struct LayoutFragmentTag;
 pub type LayoutFragmentId = blink_core::base::Id<LayoutFragmentTag>;
 
+pub enum FragmentKind {
+    Box,
+    Line,
+    Text(String),
+}
+
 pub struct LayoutFragment {
     pub dom_node: Option<DomNodeId>,
     pub rect: PhysicalRect,
     pub style: ComputedStyle,
+    pub kind: FragmentKind,
 
     pub first_child: Option<LayoutFragmentId>,
     pub next_sibling: Option<LayoutFragmentId>,
+}
+
+impl LayoutFragment {
+    pub fn is_box(&self) -> bool {
+        matches!(self.kind, FragmentKind::Box)
+    }
+
+    pub fn is_line(&self) -> bool {
+        matches!(self.kind, FragmentKind::Line)
+    }
+
+    pub fn is_text(&self) -> bool {
+        matches!(self.kind, FragmentKind::Text(_))
+    }
 }
 
 impl fmt::Debug for LayoutFragment {
@@ -75,11 +96,12 @@ impl fmt::Debug for FragmentArena {
 }
 
 impl LayoutFragment {
-    pub fn new(dom_node: Option<DomNodeId>, rect: PhysicalRect, style: ComputedStyle) -> Self {
+    pub fn new(dom_node: Option<DomNodeId>, rect: PhysicalRect, style: ComputedStyle, kind: FragmentKind) -> Self {
         Self {
             dom_node,
             rect,
             style,
+            kind,
             first_child: None,
             next_sibling: None,
         }

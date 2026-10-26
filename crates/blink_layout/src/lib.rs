@@ -3,3 +3,4 @@ pub mod fragment;
 pub mod geom;
 pub mod space;
 pub mod style;
+mod text;

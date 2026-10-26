@@ -1,19 +1,25 @@
-use crate::fragment::{FragmentArena, LayoutFragment, LayoutFragmentId};
+use crate::fragment::{FragmentArena, FragmentKind, LayoutFragment, LayoutFragmentId};
 use crate::geom::{PhysicalOffset, PhysicalRect, PhysicalSize};
 use crate::space::ConstraintSpace;
 use crate::style::{DisplayOutside, compute_style};
 use blink_css::CSSStyleSheet;
 use blink_dom::{Dom, DomNodeId};
+use crate::text::TextMeasurer;
+
+pub struct LayoutContext<'a> {
+    pub dom: &'a Dom,
+    pub stylesheet: &'a CSSStyleSheet,
+    pub text_measurer: &'a Box<dyn TextMeasurer>,
+}
 
 pub fn build_layout_tree(
     root_id: DomNodeId,
-    dom: &Dom,
-    stylesheet: &CSSStyleSheet,
+    ctx: &LayoutContext,
     initial_space: ConstraintSpace,
 ) -> FragmentArena {
     let mut arena = FragmentArena::new();
 
-    if let Some(root_fragment_id) = walk_node(root_id, dom, stylesheet, initial_space, &mut arena) {
+    if let Some(root_fragment_id) = walk_node(root_id, ctx, initial_space, &mut arena) {
         let root_idx = (root_fragment_id.get() - 1) as usize;
         // Transform the relative coordinates into absolute screen coordinates for the renderer
         make_absolute(&mut arena, root_idx, 0.0, 0.0);
@@ -39,16 +45,15 @@ fn make_absolute(arena: &mut FragmentArena, node_idx: usize, parent_x: f32, pare
 
 fn walk_node(
     node_id: DomNodeId,
-    dom: &Dom,
-    stylesheet: &CSSStyleSheet,
+    ctx: &LayoutContext,
     space: ConstraintSpace,
     arena: &mut FragmentArena,
 ) -> Option<LayoutFragmentId> {
-    if dom.get_node(node_id).is_some_and(|node| node.is_text()) {
+    if ctx.dom.get_node(node_id).is_some_and(|node| node.is_text()) {
         return None;
     }
 
-    let computed_style = compute_style(node_id, dom, stylesheet);
+    let computed_style = compute_style(node_id, &ctx.dom, &ctx.stylesheet);
 
     if computed_style.display.is_none() {
         return None;
@@ -68,14 +73,14 @@ fn walk_node(
     let node_size = PhysicalSize::new(initial_width, node_height.unwrap_or_default());
 
     let bounding_rect = PhysicalRect::new(PhysicalOffset::default(), node_size);
-    let fragment = LayoutFragment::new(Some(node_id), bounding_rect, computed_style);
+    let fragment = LayoutFragment::new(Some(node_id), bounding_rect, computed_style, FragmentKind::Box);
 
     let fragment_id = arena.add_fragment(fragment);
 
     let mut previous_child_fragment_id: Option<LayoutFragmentId> = None;
     let mut first_child_fragment_id: Option<LayoutFragmentId> = None;
 
-    let mut current_dom_child = dom.get_first_child(node_id);
+    let mut current_dom_child = ctx.dom.get_first_child(node_id);
     let mut child_x_cursor = 0.0;
     let mut child_y_cursor = 0.0;
     let mut line_height = 0.0;
@@ -87,7 +92,7 @@ fn walk_node(
         available_size: PhysicalSize::new(available_width, space.available_size.height),
     };
     while let Some(dom_child) = current_dom_child {
-        if let Some(fragment_child_id) = walk_node(dom_child, dom, stylesheet, child_space, arena) {
+        if let Some(fragment_child_id) = walk_node(dom_child, ctx, child_space, arena) {
             let child_id = fragment_child_id.get_index();
 
             let child_width = arena.fragments[child_id].rect.size.width;
@@ -135,7 +140,7 @@ fn walk_node(
             previous_child_fragment_id = Some(fragment_child_id);
         }
 
-        current_dom_child = dom.get_next_sibling(dom_child);
+        current_dom_child = ctx.dom.get_next_sibling(dom_child);
     }
 
     if line_height > 0.0 {
@@ -164,6 +169,7 @@ mod tests {
     use super::*;
     use blink_css::parse_css_into_stylesheet;
     use blink_dom::get_tag_index;
+    use crate::text::FixedWidth;
 
     #[test]
     fn inline_element_without_explicit_width_shrink_wraps_children() {
@@ -190,7 +196,13 @@ mod tests {
             available_size: PhysicalSize::new(800.0, 600.0),
         };
 
-        let arena = build_layout_tree(parent, &dom, &stylesheet, space);
+        let ctx = LayoutContext {
+            dom: &dom,
+            stylesheet: &stylesheet,
+            text_measurer: &(Box::new(FixedWidth {}) as Box<dyn TextMeasurer>),
+        };
+
+        let arena = build_layout_tree(parent, &ctx, space);
 
         let parent_fragment = arena
             .fragments
@@ -241,7 +253,13 @@ mod tests {
             available_size: PhysicalSize::new(800.0, 600.0),
         };
 
-        let arena = build_layout_tree(parent, &dom, &stylesheet, space);
+        let ctx = LayoutContext {
+            dom: &dom,
+            stylesheet: &stylesheet,
+            text_measurer: &(Box::new(FixedWidth {}) as Box<dyn TextMeasurer>),
+        };
+
+        let arena = build_layout_tree(parent, &ctx, space);
 
         let child1_fragment = arena
             .fragments
