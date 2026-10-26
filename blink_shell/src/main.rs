@@ -30,7 +30,13 @@ fn main() {
     };
 
     let root_id = output_dom.get_root_node_id();
-    let arena = build_layout_tree(root_id, &output_dom, &stylesheet, initial_space);
+
+    let ctx = blink_layout::engine::LayoutContext {
+        dom: &output_dom,
+        stylesheet: &stylesheet,
+        text_measurer: Box::new(blink_layout::text::FixedWidth {}),
+    };
+    let arena = build_layout_tree(root_id, &ctx, initial_space);
 
     // println!();
     // println!("Fragment arena: {:?}", arena);

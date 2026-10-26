@@ -2,14 +2,14 @@ use crate::fragment::{FragmentArena, FragmentKind, LayoutFragment, LayoutFragmen
 use crate::geom::{PhysicalOffset, PhysicalRect, PhysicalSize};
 use crate::space::ConstraintSpace;
 use crate::style::{DisplayOutside, compute_style};
+use crate::text::TextMeasurer;
 use blink_css::CSSStyleSheet;
 use blink_dom::{Dom, DomNodeId};
-use crate::text::TextMeasurer;
 
 pub struct LayoutContext<'a> {
     pub dom: &'a Dom,
     pub stylesheet: &'a CSSStyleSheet,
-    pub text_measurer: &'a Box<dyn TextMeasurer>,
+    pub text_measurer: Box<dyn TextMeasurer>,
 }
 
 pub fn build_layout_tree(
@@ -53,7 +53,7 @@ fn walk_node(
         return None;
     }
 
-    let computed_style = compute_style(node_id, &ctx.dom, &ctx.stylesheet);
+    let computed_style = compute_style(node_id, ctx.dom, ctx.stylesheet);
 
     if computed_style.display.is_none() {
         return None;
@@ -73,7 +73,12 @@ fn walk_node(
     let node_size = PhysicalSize::new(initial_width, node_height.unwrap_or_default());
 
     let bounding_rect = PhysicalRect::new(PhysicalOffset::default(), node_size);
-    let fragment = LayoutFragment::new(Some(node_id), bounding_rect, computed_style, FragmentKind::Box);
+    let fragment = LayoutFragment::new(
+        Some(node_id),
+        bounding_rect,
+        computed_style,
+        FragmentKind::Box,
+    );
 
     let fragment_id = arena.add_fragment(fragment);
 
@@ -167,9 +172,9 @@ fn walk_node(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::text::FixedWidth;
     use blink_css::parse_css_into_stylesheet;
     use blink_dom::get_tag_index;
-    use crate::text::FixedWidth;
 
     #[test]
     fn inline_element_without_explicit_width_shrink_wraps_children() {
@@ -199,7 +204,7 @@ mod tests {
         let ctx = LayoutContext {
             dom: &dom,
             stylesheet: &stylesheet,
-            text_measurer: &(Box::new(FixedWidth {}) as Box<dyn TextMeasurer>),
+            text_measurer: Box::new(FixedWidth {}),
         };
 
         let arena = build_layout_tree(parent, &ctx, space);
@@ -256,7 +261,7 @@ mod tests {
         let ctx = LayoutContext {
             dom: &dom,
             stylesheet: &stylesheet,
-            text_measurer: &(Box::new(FixedWidth {}) as Box<dyn TextMeasurer>),
+            text_measurer: Box::new(FixedWidth {}),
         };
 
         let arena = build_layout_tree(parent, &ctx, space);

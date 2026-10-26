@@ -96,7 +96,12 @@ impl fmt::Debug for FragmentArena {
 }
 
 impl LayoutFragment {
-    pub fn new(dom_node: Option<DomNodeId>, rect: PhysicalRect, style: ComputedStyle, kind: FragmentKind) -> Self {
+    pub fn new(
+        dom_node: Option<DomNodeId>,
+        rect: PhysicalRect,
+        style: ComputedStyle,
+        kind: FragmentKind,
+    ) -> Self {
         Self {
             dom_node,
             rect,
