@@ -146,3 +146,8 @@ fn inline_wrapping() {
 fn mixed_block_inline() {
     assert_golden("mixed_block_inline");
 }
+
+#[test]
+fn nested_inline() {
+    assert_golden("nested_inline");
+}
