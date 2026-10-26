@@ -136,3 +136,8 @@ fn assert_golden(name: &str) {
 fn basic_page() {
     assert_golden("basic");
 }
+
+#[test]
+fn inline_wrapping() {
+    assert_golden("inline_wrapping");
+}
