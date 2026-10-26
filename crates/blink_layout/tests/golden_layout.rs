@@ -151,3 +151,8 @@ fn mixed_block_inline() {
 fn nested_inline() {
     assert_golden("nested_inline");
 }
+
+#[test]
+fn display_none() {
+    assert_golden("display_none");
+}
