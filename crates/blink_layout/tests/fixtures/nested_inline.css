@@ -1,0 +1,20 @@
+.container {
+    display: block;
+    width: 300px;
+}
+
+.outer {
+    display: inline;
+}
+
+.inner {
+    display: inline;
+    width: 80px;
+    height: 20px;
+}
+
+.after {
+    display: inline;
+    width: 60px;
+    height: 20px;
+}

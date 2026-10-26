@@ -1,0 +1,14 @@
+.container {
+    display: block;
+    width: 300px;
+}
+
+.item {
+    display: inline;
+    width: 100px;
+    height: 30px;
+}
+
+.hidden {
+    display: none;
+}

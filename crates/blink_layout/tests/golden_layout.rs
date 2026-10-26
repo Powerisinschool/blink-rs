@@ -136,3 +136,23 @@ fn assert_golden(name: &str) {
 fn basic_page() {
     assert_golden("basic");
 }
+
+#[test]
+fn inline_wrapping() {
+    assert_golden("inline_wrapping");
+}
+
+#[test]
+fn mixed_block_inline() {
+    assert_golden("mixed_block_inline");
+}
+
+#[test]
+fn nested_inline() {
+    assert_golden("nested_inline");
+}
+
+#[test]
+fn display_none() {
+    assert_golden("display_none");
+}

@@ -2,7 +2,7 @@
 
 An experimental web rendering engine in Rust, focused on the **DOM → style → layout** pipeline. It takes the single-threaded, constraint-driven layout model of Chromium's LayoutNG as its reference design and rebuilds it around a flat, arena-allocated DOM.
 
-> **Status: pre-alpha, Phase 1 complete (proof of concept).** The engine parses HTML and CSS, matches selectors, lays out block and inline-block-style boxes, and writes a wireframe PNG of the resulting fragments. Text layout, margins/padding, wrapping, and most of CSS are not implemented yet. See [Current limitations](#current-limitations) and the [Roadmap](#roadmap).
+> **Status: pre-alpha, Phase 1 complete (proof of concept).** The engine parses HTML and CSS, matches selectors, lays out block and inline-block-style boxes, and writes a wireframe PNG of the resulting fragments. Text layout, margins/padding, and most of CSS are not implemented yet. Inline-level boxes can wrap to new lines, but text itself does not wrap. See [Current limitations](#current-limitations) and the [Roadmap](#roadmap).
 >
 > This is an independent project. It is not affiliated with Google or the Chromium project; Blink and LayoutNG are used as architectural references only.
 
@@ -67,10 +67,10 @@ An experimental web rendering engine in Rust, focused on the **DOM → style →
 
 Known gaps, many of which are good places to start contributing (see [CONTRIBUTING.md](CONTRIBUTING.md)):
 
-- Text nodes are skipped, so there is no text layout, shaping, or whitespace handling.
+- Text nodes are skipped, so text shaping, whitespace handling, and text-based line breaking are not implemented.
 - The parser can emit several adjacent text nodes for one run of text; they are not merged.
 - `display: inline` behaves like `inline-block` (width and height apply). Real inline formatting does not exist yet.
-- No line wrapping: inline children that exceed the available width overflow instead of wrapping.
+- Line wrapping is currently box-level only: inline-level boxes can move to a new line, but text does not wrap.
 - An auto-width inline box containing only block children collapses to zero width.
 - No margin, padding, border, `position`, floats, or flexbox.
 - No property inheritance. Only `px` lengths are parsed.
