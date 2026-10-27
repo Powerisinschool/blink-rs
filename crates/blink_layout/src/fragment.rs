@@ -35,6 +35,14 @@ impl LayoutFragment {
     pub fn is_text(&self) -> bool {
         matches!(self.kind, FragmentKind::Text(_))
     }
+
+    pub(self) fn get_kind_text(&self) -> String {
+        match &self.kind {
+            FragmentKind::Box => "Box".to_string(),
+            FragmentKind::Line => "Line".to_string(),
+            FragmentKind::Text(text) => format!("Text({})", text),
+        }
+    }
 }
 
 impl fmt::Debug for LayoutFragment {
@@ -46,7 +54,9 @@ impl fmt::Debug for LayoutFragment {
             None => debug.field("dom_node_id", &"None"),
         };
 
-        debug.field("rect", &self.rect).field("style", &self.style);
+        debug
+            .field("rect", &self.rect).field("style", &self.style)
+            .field("kind", &self.get_kind_text());
 
         match &self.first_child {
             Some(id) => debug.field("first_child", id),

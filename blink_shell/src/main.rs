@@ -39,7 +39,7 @@ fn main() {
     let arena = build_layout_tree(root_id, &ctx, initial_space);
 
     // println!();
-    // println!("Fragment arena: {:?}", arena);
+    println!("Fragment arena: {:#?}", arena);
 
     // Output the rendered image
     render_to_png(&arena, OUTPUT_WIDTH, OUTPUT_HEIGHT, "output.png").unwrap();
