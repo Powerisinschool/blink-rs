@@ -7,7 +7,7 @@ pub struct FixedWidth {}
 
 impl TextMeasurer for FixedWidth {
     fn measure(&self, text: &str) -> f32 {
-        (text.len() as f32) * 10.0
+        (text.chars().count() as f32) * 10.0
     }
 
     fn line_height(&self) -> f32 {
