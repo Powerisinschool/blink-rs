@@ -24,6 +24,10 @@ impl InlineItem {
         matches!(self.kind, InlineItemKind::AtomicInline)
     }
 
+    pub fn is_forced_break(&self) -> bool {
+        matches!(self.kind, InlineItemKind::ForcedBreak)
+    }
+
     pub fn get_text(&self) -> Option<&str> {
         if let InlineItemKind::Text(ref text) = self.kind {
             Some(text)
@@ -37,6 +41,12 @@ impl InlineItem {
             Some(text)
         } else {
             None
+        }
+    }
+
+    pub fn append_text(&mut self, additional_text: &str) {
+        if let InlineItemKind::Text(ref mut text) = self.kind {
+            text.push_str(additional_text);
         }
     }
 }
@@ -140,12 +150,15 @@ pub fn process_text(
     }
 }
 
-pub fn strip_trailing_space(items: &mut Vec<InlineItem>) {
+pub fn strip_trailing_space(items: &mut Vec<InlineItem>) -> bool {
+    let mut removed_space = false;
+
     if let Some(last_item) = items.last_mut()
         && let Some(ref mut text) = last_item.get_text_mut()
         && text.ends_with(' ')
     {
         text.pop();
+        removed_space = true;
     }
 
     if let Some(last_item) = items.last()
@@ -154,6 +167,8 @@ pub fn strip_trailing_space(items: &mut Vec<InlineItem>) {
     {
         items.pop();
     }
+
+    removed_space
 }
 
 #[cfg(test)]
