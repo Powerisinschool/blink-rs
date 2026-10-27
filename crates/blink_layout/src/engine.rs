@@ -1,12 +1,12 @@
 use crate::fragment::{FragmentArena, FragmentKind, LayoutFragment, LayoutFragmentId};
 use crate::geom::{PhysicalOffset, PhysicalRect, PhysicalSize};
+use crate::inline::{InlineItemKind, collect_inline_items};
+use crate::line_breaker::break_lines;
 use crate::space::ConstraintSpace;
-use crate::style::{compute_style, ComputedStyle, DisplayOutside, Display};
+use crate::style::{ComputedStyle, Display, DisplayOutside, compute_style};
 use crate::text::TextMeasurer;
 use blink_css::CSSStyleSheet;
 use blink_dom::{Dom, DomNodeId};
-use crate::inline::{collect_inline_items, InlineItemKind};
-use crate::line_breaker::break_lines;
 
 pub struct LayoutContext<'a> {
     pub dom: &'a Dom,
@@ -241,21 +241,24 @@ fn flush_inline_run(
                     );
 
                     Some(arena.add_fragment(text_fragment))
-                },
+                }
                 InlineItemKind::AtomicInline => {
                     let child_space = ConstraintSpace {
                         available_size: PhysicalSize::new(max_width, f32::MAX),
                     };
 
                     walk_node(item.dom_node, ctx, child_space, arena)
-                },
+                }
                 InlineItemKind::ForcedBreak => None,
             };
 
             if let Some(child_fragment_id) = child_fragment_id_opt {
                 arena.fragments[child_fragment_id.get_index()].rect.origin.x = line_x;
 
-                let width = arena.fragments[child_fragment_id.get_index()].rect.size.width;
+                let width = arena.fragments[child_fragment_id.get_index()]
+                    .rect
+                    .size
+                    .width;
                 line_x += width;
 
                 if line_first_child.is_none() {

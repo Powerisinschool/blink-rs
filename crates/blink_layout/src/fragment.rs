@@ -55,7 +55,8 @@ impl fmt::Debug for LayoutFragment {
         };
 
         debug
-            .field("rect", &self.rect).field("style", &self.style)
+            .field("rect", &self.rect)
+            .field("style", &self.style)
             .field("kind", &self.get_kind_text());
 
         match &self.first_child {
