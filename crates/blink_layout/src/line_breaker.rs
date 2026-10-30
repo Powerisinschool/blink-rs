@@ -29,6 +29,7 @@ pub fn break_lines(items: Vec<InlineItem>, max_width: f32, ctx: &LayoutContext) 
         if item.is_forced_break() {
             break_line(
                 space_width,
+                ctx.text_measurer.line_height(),
                 &mut current_line_items,
                 &mut current_x,
                 &mut current_height,
@@ -42,6 +43,7 @@ pub fn break_lines(items: Vec<InlineItem>, max_width: f32, ctx: &LayoutContext) 
             if current_x > 0.0 && current_x + item_style.width.unwrap_or(0.0) > max_width {
                 break_line(
                     space_width,
+                    ctx.text_measurer.line_height(),
                     &mut current_line_items,
                     &mut current_x,
                     &mut current_height,
@@ -61,6 +63,7 @@ pub fn break_lines(items: Vec<InlineItem>, max_width: f32, ctx: &LayoutContext) 
                 if current_x + fit_width > max_width && !current_line_items.is_empty() {
                     break_line(
                         space_width,
+                        ctx.text_measurer.line_height(),
                         &mut current_line_items,
                         &mut current_x,
                         &mut current_height,
@@ -86,6 +89,7 @@ pub fn break_lines(items: Vec<InlineItem>, max_width: f32, ctx: &LayoutContext) 
     if !current_line_items.is_empty() {
         break_line(
             space_width,
+            ctx.text_measurer.line_height(),
             &mut current_line_items,
             &mut current_x,
             &mut current_height,
@@ -98,6 +102,7 @@ pub fn break_lines(items: Vec<InlineItem>, max_width: f32, ctx: &LayoutContext) 
 
 fn break_line(
     space_width: f32,
+    min_line_height: f32,
     current_line_items: &mut Vec<InlineItem>,
     current_x: &mut f32,
     current_height: &mut f32,
@@ -109,7 +114,7 @@ fn break_line(
     completed_lines.push(Line::new(
         std::mem::take(current_line_items),
         *current_x,
-        *current_height,
+        current_height.max(min_line_height),
     ));
     *current_x = 0.0;
     *current_height = 0.0;
