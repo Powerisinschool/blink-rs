@@ -11,7 +11,7 @@
 use blink_css::{CSSStyleSheet, parse_css_into_stylesheet};
 use blink_dom::{Dom, get_tag_name};
 use blink_html::parse_html;
-use blink_layout::engine::build_layout_tree;
+use blink_layout::engine::{LayoutContext, build_layout_tree};
 use blink_layout::fragment::FragmentArena;
 use blink_layout::geom::PhysicalSize;
 use blink_layout::space::ConstraintSpace;
@@ -32,7 +32,14 @@ fn layout_fixture(html: &str, css: &str) -> (Dom, FragmentArena) {
     let space = ConstraintSpace {
         available_size: PhysicalSize::new(VIEWPORT.0, VIEWPORT.1),
     };
-    let arena = build_layout_tree(dom.get_root_node_id(), &dom, &stylesheet, space);
+    let ctx = LayoutContext {
+        dom: &dom,
+        stylesheet: &stylesheet,
+        text_measurer: Box::new(blink_layout::text::FixedWidth {}),
+    };
+
+    let arena = build_layout_tree(dom.get_root_node_id(), &ctx, space);
+
     (dom, arena)
 }
 

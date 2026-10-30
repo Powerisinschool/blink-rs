@@ -12,13 +12,13 @@ div#app-root {
 .logo {
     width: 150px;
     height: 40px;
-    display: inline;
+    display: inline-block;
 }
 
 .nav-item {
     width: 80px;
     height: 40px;
-    display: inline;
+    display: inline-block;
 }
 
 .hidden-element {
@@ -39,13 +39,13 @@ div#app-root {
 .sidebar {
     width: 200px;
     height: 500px;
-    display: inline;
+    display: inline-block;
 }
 
 .content {
     width: 540px;
     height: 500px;
-    display: inline;
+    display: inline-block;
 }
 
 .menu-link {

@@ -13,6 +13,10 @@ pub fn render_to_png(
     pixmap.fill(Color::WHITE);
 
     for fragment in &arena.fragments {
+        if fragment.is_text() || fragment.is_line() {
+            continue; // TODO: Implement proper text and line rendering
+        }
+
         let rect_data = fragment.rect;
 
         if rect_data.size.width <= 0.0 || rect_data.size.height <= 0.0 {

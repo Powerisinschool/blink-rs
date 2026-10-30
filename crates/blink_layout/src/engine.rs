@@ -1,19 +1,27 @@
-use crate::fragment::{FragmentArena, LayoutFragment, LayoutFragmentId};
+use crate::fragment::{FragmentArena, FragmentKind, LayoutFragment, LayoutFragmentId};
 use crate::geom::{PhysicalOffset, PhysicalRect, PhysicalSize};
+use crate::inline::{InlineItemKind, collect_inline_items};
+use crate::line_breaker::break_lines;
 use crate::space::ConstraintSpace;
-use crate::style::{DisplayOutside, compute_style};
+use crate::style::{ComputedStyle, Display, DisplayOutside, compute_style};
+use crate::text::TextMeasurer;
 use blink_css::CSSStyleSheet;
 use blink_dom::{Dom, DomNodeId};
 
+pub struct LayoutContext<'a> {
+    pub dom: &'a Dom,
+    pub stylesheet: &'a CSSStyleSheet,
+    pub text_measurer: Box<dyn TextMeasurer>,
+}
+
 pub fn build_layout_tree(
     root_id: DomNodeId,
-    dom: &Dom,
-    stylesheet: &CSSStyleSheet,
+    ctx: &LayoutContext,
     initial_space: ConstraintSpace,
 ) -> FragmentArena {
     let mut arena = FragmentArena::new();
 
-    if let Some(root_fragment_id) = walk_node(root_id, dom, stylesheet, initial_space, &mut arena) {
+    if let Some(root_fragment_id) = walk_node(root_id, ctx, initial_space, &mut arena) {
         let root_idx = (root_fragment_id.get() - 1) as usize;
         // Transform the relative coordinates into absolute screen coordinates for the renderer
         make_absolute(&mut arena, root_idx, 0.0, 0.0);
@@ -39,16 +47,15 @@ fn make_absolute(arena: &mut FragmentArena, node_idx: usize, parent_x: f32, pare
 
 fn walk_node(
     node_id: DomNodeId,
-    dom: &Dom,
-    stylesheet: &CSSStyleSheet,
+    ctx: &LayoutContext,
     space: ConstraintSpace,
     arena: &mut FragmentArena,
 ) -> Option<LayoutFragmentId> {
-    if dom.get_node(node_id).is_some_and(|node| node.is_text()) {
+    if ctx.dom.get_node(node_id).is_some_and(|node| node.is_text()) {
         return None;
     }
 
-    let computed_style = compute_style(node_id, dom, stylesheet);
+    let computed_style = compute_style(node_id, ctx.dom, ctx.stylesheet);
 
     if computed_style.display.is_none() {
         return None;
@@ -68,79 +75,22 @@ fn walk_node(
     let node_size = PhysicalSize::new(initial_width, node_height.unwrap_or_default());
 
     let bounding_rect = PhysicalRect::new(PhysicalOffset::default(), node_size);
-    let fragment = LayoutFragment::new(Some(node_id), bounding_rect, computed_style);
+    let fragment = LayoutFragment::new(
+        Some(node_id),
+        bounding_rect,
+        computed_style,
+        FragmentKind::Box,
+    );
 
     let fragment_id = arena.add_fragment(fragment);
 
-    let mut previous_child_fragment_id: Option<LayoutFragmentId> = None;
-    let mut first_child_fragment_id: Option<LayoutFragmentId> = None;
-
-    let mut current_dom_child = dom.get_first_child(node_id);
-    let mut child_x_cursor = 0.0;
-    let mut child_y_cursor = 0.0;
-    let mut line_height = 0.0;
-    let mut max_line_width: f32 = 0.0;
-
     let available_width = node_width.unwrap_or(space.available_size.width);
-
     let child_space = ConstraintSpace {
         available_size: PhysicalSize::new(available_width, space.available_size.height),
     };
-    while let Some(dom_child) = current_dom_child {
-        if let Some(fragment_child_id) = walk_node(dom_child, dom, stylesheet, child_space, arena) {
-            let child_id = fragment_child_id.get_index();
 
-            let child_width = arena.fragments[child_id].rect.size.width;
-            let child_height = arena.fragments[child_id].rect.size.height;
-
-            let child_fragment = &mut arena.fragments[child_id];
-
-            match child_fragment.style.display.outside() {
-                Some(DisplayOutside::Block) => {
-                    if line_height > 0.0 {
-                        child_y_cursor += line_height;
-                        line_height = 0.0;
-                    }
-                    child_fragment.rect.origin.y = child_y_cursor;
-                    child_x_cursor = 0.0;
-                    child_y_cursor += child_height;
-                    max_line_width = max_line_width.max(child_width);
-                }
-                Some(DisplayOutside::Inline) => {
-                    if child_x_cursor > 0.0
-                        && child_x_cursor + child_width > child_space.available_size.width
-                    {
-                        child_y_cursor += line_height;
-                        line_height = 0.0;
-                        child_x_cursor = 0.0;
-                    }
-                    child_fragment.rect.origin.x = child_x_cursor;
-                    child_fragment.rect.origin.y = child_y_cursor;
-                    child_x_cursor += child_width;
-                    max_line_width = max_line_width.max(child_x_cursor);
-                    line_height = line_height.max(child_height);
-                }
-                _ => {}
-            }
-
-            if first_child_fragment_id.is_none() {
-                first_child_fragment_id = Some(fragment_child_id);
-            }
-
-            if let Some(previous_id) = previous_child_fragment_id {
-                let previous_idx = previous_id.get_index();
-                arena.fragments[previous_idx].set_next_sibling(fragment_child_id);
-            }
-
-            previous_child_fragment_id = Some(fragment_child_id);
-        }
-
-        current_dom_child = dom.get_next_sibling(dom_child);
-    }
-
-    if line_height > 0.0 {
-        child_y_cursor += line_height;
-    }
+    let (first_child_id, total_child_height, max_line_width) =
+        layout_flow_children(node_id, ctx, &child_space, arena);
 
     let fragment_idx = fragment_id.get_index();
 
@@ -149,19 +99,194 @@ fn walk_node(
     }
 
     if node_height.is_none() {
-        arena.fragments[fragment_idx].rect.size.height = child_y_cursor;
+        arena.fragments[fragment_idx].rect.size.height = total_child_height;
     }
 
-    if let Some(first_id) = first_child_fragment_id {
+    if let Some(first_id) = first_child_id {
         arena.fragments[fragment_idx].set_first_child(first_id);
     }
 
     Some(fragment_id)
 }
 
+fn layout_flow_children(
+    node_id: DomNodeId,
+    ctx: &LayoutContext,
+    child_space: &ConstraintSpace,
+    arena: &mut FragmentArena,
+) -> (Option<LayoutFragmentId>, f32, f32) {
+    let mut current_y_cursor = 0.0;
+    let mut max_line_width: f32 = 0.0;
+    let mut first_child_fragment_id: Option<LayoutFragmentId> = None;
+    let mut previous_child_fragment_id: Option<LayoutFragmentId> = None;
+
+    let mut inline_run: Vec<DomNodeId> = Vec::new();
+    let mut current_dom_child = ctx.dom.get_first_child(node_id);
+
+    while let Some(dom_child) = current_dom_child {
+        let is_inline = if ctx.dom.get_node(dom_child).unwrap().is_text() {
+            true
+        } else {
+            let child_style = compute_style(dom_child, ctx.dom, ctx.stylesheet);
+            child_style.display.outside() == Some(DisplayOutside::Inline)
+        };
+
+        if is_inline {
+            inline_run.push(dom_child);
+        } else {
+            if !inline_run.is_empty() {
+                let run_width = flush_inline_run(
+                    &mut inline_run,
+                    ctx,
+                    child_space.available_size.width,
+                    &mut current_y_cursor,
+                    arena,
+                    &mut first_child_fragment_id,
+                    &mut previous_child_fragment_id,
+                );
+                max_line_width = max_line_width.max(run_width);
+            }
+
+            if let Some(block_fragment_id) = walk_node(dom_child, ctx, *child_space, arena) {
+                let block_idx = block_fragment_id.get_index();
+
+                arena.fragments[block_idx].rect.origin.y = current_y_cursor;
+
+                if first_child_fragment_id.is_none() {
+                    first_child_fragment_id = Some(block_fragment_id);
+                }
+                if let Some(prev) = previous_child_fragment_id {
+                    arena.fragments[prev.get_index()].set_next_sibling(block_fragment_id);
+                }
+                previous_child_fragment_id = Some(block_fragment_id);
+
+                current_y_cursor += arena.fragments[block_idx].rect.size.height;
+                max_line_width = max_line_width.max(arena.fragments[block_idx].rect.size.width);
+            }
+        }
+
+        current_dom_child = ctx.dom.get_next_sibling(dom_child);
+    }
+
+    if !inline_run.is_empty() {
+        let run_width = flush_inline_run(
+            &mut inline_run,
+            ctx,
+            child_space.available_size.width,
+            &mut current_y_cursor,
+            arena,
+            &mut first_child_fragment_id,
+            &mut previous_child_fragment_id,
+        );
+
+        max_line_width = max_line_width.max(run_width);
+    }
+
+    (first_child_fragment_id, current_y_cursor, max_line_width)
+}
+
+fn flush_inline_run(
+    inline_run: &mut Vec<DomNodeId>,
+    ctx: &LayoutContext,
+    max_width: f32,
+    current_y_cursor: &mut f32,
+    arena: &mut FragmentArena,
+    parent_first_child: &mut Option<LayoutFragmentId>,
+    parent_previous_child: &mut Option<LayoutFragmentId>,
+) -> f32 {
+    let items = collect_inline_items(inline_run, ctx);
+    let lines = break_lines(items, max_width, ctx);
+
+    let mut run_max_width: f32 = 0.0;
+
+    for line in lines {
+        run_max_width = run_max_width.max(line.width);
+
+        let line_rect = PhysicalRect::new(
+            PhysicalOffset::new(0.0, *current_y_cursor),
+            PhysicalSize::new(line.width, line.height),
+        );
+        let line_style = ComputedStyle::new(Display::BLOCK, Some(line.width), Some(line.height));
+        let line_fragment = LayoutFragment::new(None, line_rect, line_style, FragmentKind::Line);
+        let line_fragment_id = arena.add_fragment(line_fragment);
+
+        if parent_first_child.is_none() {
+            *parent_first_child = Some(line_fragment_id);
+        }
+        if let Some(prev) = *parent_previous_child {
+            arena.fragments[prev.get_index()].set_next_sibling(line_fragment_id);
+        }
+        *parent_previous_child = Some(line_fragment_id);
+
+        let mut line_x = 0.0;
+        let mut line_first_child: Option<LayoutFragmentId> = None;
+        let mut line_prev_child: Option<LayoutFragmentId> = None;
+
+        for item in line.items {
+            let child_fragment_id_opt = match item.kind {
+                InlineItemKind::Text(text) => {
+                    let width = ctx.text_measurer.measure(&text);
+                    let height = ctx.text_measurer.line_height();
+
+                    let text_rect = PhysicalRect::new(
+                        PhysicalOffset::new(line_x, 0.0),
+                        PhysicalSize::new(width, height),
+                    );
+                    let text_style = compute_style(item.dom_node, ctx.dom, ctx.stylesheet);
+                    let text_fragment = LayoutFragment::new(
+                        Some(item.dom_node),
+                        text_rect,
+                        text_style,
+                        FragmentKind::Text(text),
+                    );
+
+                    Some(arena.add_fragment(text_fragment))
+                }
+                InlineItemKind::AtomicInline => {
+                    let child_space = ConstraintSpace {
+                        available_size: PhysicalSize::new(max_width, f32::MAX),
+                    };
+
+                    walk_node(item.dom_node, ctx, child_space, arena)
+                }
+                InlineItemKind::ForcedBreak => None,
+            };
+
+            if let Some(child_fragment_id) = child_fragment_id_opt {
+                arena.fragments[child_fragment_id.get_index()].rect.origin.x = line_x;
+
+                let width = arena.fragments[child_fragment_id.get_index()]
+                    .rect
+                    .size
+                    .width;
+                line_x += width;
+
+                if line_first_child.is_none() {
+                    line_first_child = Some(child_fragment_id);
+                }
+
+                if let Some(prev) = line_prev_child {
+                    arena.fragments[prev.get_index()].set_next_sibling(child_fragment_id);
+                }
+                line_prev_child = Some(child_fragment_id);
+            }
+        }
+
+        if let Some(first) = line_first_child {
+            arena.fragments[line_fragment_id.get_index()].set_first_child(first);
+        }
+        *current_y_cursor += line.height;
+    }
+
+    inline_run.clear();
+
+    run_max_width
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::text::FixedWidth;
     use blink_css::parse_css_into_stylesheet;
     use blink_dom::get_tag_index;
 
@@ -180,8 +305,8 @@ mod tests {
         let mut stylesheet = CSSStyleSheet::new();
         parse_css_into_stylesheet(
             r#"
-                div { display: inline; }
-                span { width: 40px; height: 10px; }
+                div { display: inline-block; }
+                span { display: inline-block; width: 40px; height: 10px; }
             "#,
             &mut stylesheet,
         );
@@ -190,7 +315,13 @@ mod tests {
             available_size: PhysicalSize::new(800.0, 600.0),
         };
 
-        let arena = build_layout_tree(parent, &dom, &stylesheet, space);
+        let ctx = LayoutContext {
+            dom: &dom,
+            stylesheet: &stylesheet,
+            text_measurer: Box::new(FixedWidth {}),
+        };
+
+        let arena = build_layout_tree(parent, &ctx, space);
 
         let parent_fragment = arena
             .fragments
@@ -231,8 +362,8 @@ mod tests {
         let mut stylesheet = CSSStyleSheet::new();
         parse_css_into_stylesheet(
             r#"
-                div { display: inline; width: 100px; }
-                span { width: 40px; height: 10px; }
+                div { display: block; width: 100px; }
+                span { display: inline-block; width: 40px; height: 10px; }
             "#,
             &mut stylesheet,
         );
@@ -241,7 +372,13 @@ mod tests {
             available_size: PhysicalSize::new(800.0, 600.0),
         };
 
-        let arena = build_layout_tree(parent, &dom, &stylesheet, space);
+        let ctx = LayoutContext {
+            dom: &dom,
+            stylesheet: &stylesheet,
+            text_measurer: Box::new(FixedWidth {}),
+        };
+
+        let arena = build_layout_tree(parent, &ctx, space);
 
         let child1_fragment = arena
             .fragments
