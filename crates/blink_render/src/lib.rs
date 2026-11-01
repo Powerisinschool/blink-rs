@@ -13,32 +13,49 @@ pub fn render_to_png(
     pixmap.fill(Color::WHITE);
 
     for fragment in &arena.fragments {
-        if fragment.is_text() || fragment.is_line() {
-            continue; // TODO: Implement proper text and line rendering
-        }
-
         let rect_data = fragment.rect;
 
         if rect_data.size.width <= 0.0 || rect_data.size.height <= 0.0 {
             continue;
         }
 
-        if let Some(skia_rect) = Rect::from_xywh(
+        let skia_rect = match Rect::from_xywh(
             rect_data.origin.x,
             rect_data.origin.y,
             rect_data.size.width,
             rect_data.size.height,
         ) {
+            Some(r) => r,
+            None => continue,
+        };
+
+        if fragment.is_text() {
             let mut paint = Paint::default();
-            paint.set_color_rgba8(30, 110, 210, 255);
+            paint.set_color_rgba8(200, 200, 200, 255);
+            paint.anti_alias = true;
 
             let mut pb = PathBuilder::new();
             pb.push_rect(skia_rect);
-
             if let Some(path) = pb.finish() {
-                let stroke = Stroke::default();
-                pixmap.stroke_path(&path, &paint, &stroke, Transform::identity(), None);
+                // Fill it so it looks like dummy wireframe text sentences
+                pixmap.fill_path(&path, &paint, tiny_skia::FillRule::Winding, Transform::identity(), None);
             }
+            continue; // TODO: Implement proper text rendering
+        }
+
+        if fragment.is_line() {
+            continue;
+        }
+
+        let mut paint = Paint::default();
+        paint.set_color_rgba8(30, 110, 210, 255);
+
+        let mut pb = PathBuilder::new();
+        pb.push_rect(skia_rect);
+
+        if let Some(path) = pb.finish() {
+            let stroke = Stroke::default();
+            pixmap.stroke_path(&path, &paint, &stroke, Transform::identity(), None);
         }
     }
 
