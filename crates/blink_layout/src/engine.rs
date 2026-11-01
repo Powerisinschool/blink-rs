@@ -363,7 +363,7 @@ mod tests {
         parse_css_into_stylesheet(
             r#"
                 div { display: block; width: 100px; }
-                span { display: inline-block; width: 40px; height: 10px; }
+                span { display: inline-block; width: 40px; height: 20px; }
             "#,
             &mut stylesheet,
         );
@@ -421,7 +421,7 @@ mod tests {
             "Inline element should shrink-wrap its child's width"
         );
         assert_eq!(
-            child3_fragment.rect.origin.y, 10.0,
+            child3_fragment.rect.origin.y, 20.0,
             "Inline element should shrink-wrap its child's width"
         );
 
@@ -432,7 +432,7 @@ mod tests {
             .expect("Expected parent fragment");
 
         assert_eq!(
-            parent_fragment.rect.size.height, 20.0,
+            parent_fragment.rect.size.height, 40.0,
             "Inline element should shrink-wrap its child's width"
         );
     }
