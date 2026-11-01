@@ -36,6 +36,14 @@ impl LayoutFragment {
         matches!(self.kind, FragmentKind::Text(_))
     }
 
+    pub fn get_text(&self) -> Option<&str> {
+        if let FragmentKind::Text(ref text) = self.kind {
+            Some(text)
+        } else {
+            None
+        }
+    }
+
     pub(self) fn get_kind_text(&self) -> String {
         match &self.kind {
             FragmentKind::Box => "Box".to_string(),

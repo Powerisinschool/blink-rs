@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 markup5ever.workspace = true
+fontdue.workspace = true
 blink_dom = { path = "../blink_dom" }
 blink_css = { path = "../blink_css" }
 blink_core = { path = "../blink_core" }
