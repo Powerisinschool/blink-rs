@@ -15,10 +15,12 @@ fn main() {
         fs::read_to_string("assets/test.html").expect("Failed to read assets/test.html");
     let css_input = fs::read_to_string("assets/test.css").expect("Failed to read assets/test.css");
 
-    let font_data = std::fs::read("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")
-        .or_else(|_| std::fs::read("C:\\Windows\\Fonts\\arial.ttf"))
-        .or_else(|_| std::fs::read("/Library/Fonts/Arial Unicode.ttf"))
-        .expect("Failed to read font file");
+    // let font_data = std::fs::read("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")
+    //     .or_else(|_| std::fs::read("C:\\Windows\\Fonts\\arial.ttf"))
+    //     .or_else(|_| std::fs::read("/Library/Fonts/Arial Unicode.ttf"))
+    //     .expect("Failed to read font file");
+
+    let font_data = std::fs::read("assets/fonts/KaushanScript-Regular.otf").expect("Failed to read font file");
 
     let font = fontdue::Font::from_bytes(font_data, fontdue::FontSettings::default())
         .expect("Failed to parse font");
