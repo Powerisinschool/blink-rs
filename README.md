@@ -2,11 +2,11 @@
 
 An experimental web rendering engine in Rust, focused on the **DOM → style → layout** pipeline. It takes the single-threaded, constraint-driven layout model of Chromium's LayoutNG as its reference design and rebuilds it around a flat, arena-allocated DOM.
 
-> **Status: pre-alpha, Phase 1 complete (proof of concept).** The engine parses HTML and CSS, matches selectors, lays out block and inline-block-style boxes, and writes a wireframe PNG of the resulting fragments. Text layout, margins/padding, and most of CSS are not implemented yet. Inline-level boxes can wrap to new lines, but text itself does not wrap. See [Current limitations](#current-limitations) and the [Roadmap](#roadmap).
+> **Status: pre-alpha, Phases 1 and 1.5 complete (proof of concept).** The engine supports block and inline layout, basic text measurement, whitespace collapsing, text fragments, line breaking and wrapping, and basic glyph rasterization. It produces rendered PNG output through the layout and rendering pipeline. Full text shaping and most CSS features remain unimplemented. See [Current limitations](#current-limitations) and the [Roadmap](#roadmap).
 >
 > This is an independent project. It is not affiliated with Google or the Chromium project; Blink and LayoutNG are used as architectural references only.
 
-![Phase 1 output: fragment boundaries for assets/test.html](docs/phase1-output.png)
+![Phase 1.5 output: fragment boundaries for assets/test.html](docs/phase1.5-output.png)
 
 *Wireframe of the layout fragments produced from [`assets/test.html`](assets/test.html) and [`assets/test.css`](assets/test.css).*
 
@@ -67,16 +67,16 @@ An experimental web rendering engine in Rust, focused on the **DOM → style →
 
 Known gaps, many of which are good places to start contributing (see [CONTRIBUTING.md](CONTRIBUTING.md)):
 
-- Text nodes are skipped, so text shaping, whitespace handling, and text-based line breaking are not implemented.
+- Basic text layout and rendering are supported
 - The parser can emit several adjacent text nodes for one run of text; they are not merged.
-- `display: inline` behaves like `inline-block` (width and height apply). Real inline formatting does not exist yet.
-- Line wrapping is currently box-level only: inline-level boxes can move to a new line, but text does not wrap.
+- True inline flow has been introduced, with some limitations.
+- Text wraps at supported whitespace boundaries.
 - An auto-width inline box containing only block children collapses to zero width.
 - No margin, padding, border, `position`, floats, or flexbox.
 - No property inheritance. Only `px` lengths are parsed.
 - No child, sibling or attribute selectors, no pseudo-classes, no `!important`.
 - Unknown `display` values fall back to `inline`. Unknown tag names currently map to tag index 0.
-- `blink_render` currently draws fragment boundaries, not painted content.
+- Basic glyph rasterization and fragment rendering are supported.
 
 ## Building and running
 
@@ -107,10 +107,10 @@ Unit tests cover selector matching, specificity, descendant chains, length parsi
 ### Phase 1.5: Text and inline flow
 
 - [x] Merge adjacent text nodes in the tree builder
-- [ ] Whitespace collapsing and text fragments
+- [x] Whitespace collapsing and text fragments
 - [x] Line breaking and wrapping
 - [x] Rename the current `Inline` to `InlineBlock`; introduce true inline layout
-- [ ] Golden tests for all fixtures in `assets/`
+- [x] Golden tests for all fixtures in `assets/`
 
 ### Phase 2: LayoutNG-style architecture
 
