@@ -6,3 +6,4 @@ edition = "2024"
 [dependencies]
 blink_layout = { path = "../blink_layout" }
 tiny-skia.workspace = true
+fontdue.workspace = true

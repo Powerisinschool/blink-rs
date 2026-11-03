@@ -7,13 +7,50 @@ use std::fmt::Formatter;
 pub struct LayoutFragmentTag;
 pub type LayoutFragmentId = blink_core::base::Id<LayoutFragmentTag>;
 
+pub enum FragmentKind {
+    Box,
+    Line,
+    Text(String),
+}
+
 pub struct LayoutFragment {
     pub dom_node: Option<DomNodeId>,
     pub rect: PhysicalRect,
     pub style: ComputedStyle,
+    pub kind: FragmentKind,
 
     pub first_child: Option<LayoutFragmentId>,
     pub next_sibling: Option<LayoutFragmentId>,
+}
+
+impl LayoutFragment {
+    pub fn is_box(&self) -> bool {
+        matches!(self.kind, FragmentKind::Box)
+    }
+
+    pub fn is_line(&self) -> bool {
+        matches!(self.kind, FragmentKind::Line)
+    }
+
+    pub fn is_text(&self) -> bool {
+        matches!(self.kind, FragmentKind::Text(_))
+    }
+
+    pub fn get_text(&self) -> Option<&str> {
+        if let FragmentKind::Text(ref text) = self.kind {
+            Some(text)
+        } else {
+            None
+        }
+    }
+
+    pub(self) fn get_kind_text(&self) -> String {
+        match &self.kind {
+            FragmentKind::Box => "Box".to_string(),
+            FragmentKind::Line => "Line".to_string(),
+            FragmentKind::Text(text) => format!("Text({})", text),
+        }
+    }
 }
 
 impl fmt::Debug for LayoutFragment {
@@ -25,7 +62,10 @@ impl fmt::Debug for LayoutFragment {
             None => debug.field("dom_node_id", &"None"),
         };
 
-        debug.field("rect", &self.rect).field("style", &self.style);
+        debug
+            .field("rect", &self.rect)
+            .field("style", &self.style)
+            .field("kind", &self.get_kind_text());
 
         match &self.first_child {
             Some(id) => debug.field("first_child", id),
@@ -75,11 +115,17 @@ impl fmt::Debug for FragmentArena {
 }
 
 impl LayoutFragment {
-    pub fn new(dom_node: Option<DomNodeId>, rect: PhysicalRect, style: ComputedStyle) -> Self {
+    pub fn new(
+        dom_node: Option<DomNodeId>,
+        rect: PhysicalRect,
+        style: ComputedStyle,
+        kind: FragmentKind,
+    ) -> Self {
         Self {
             dom_node,
             rect,
             style,
+            kind,
             first_child: None,
             next_sibling: None,
         }
@@ -105,6 +151,12 @@ impl FragmentArena {
         let fragment_id = self.fragments.len();
         self.fragments.push(fragment);
         LayoutFragmentId::from_usize(fragment_id).unwrap()
+    }
+
+    pub fn get_fragment_rect(&self, fragment_id: LayoutFragmentId) -> Option<&PhysicalRect> {
+        self.fragments
+            .get(fragment_id.get_index())
+            .map(|fragment| &fragment.rect)
     }
 }
 

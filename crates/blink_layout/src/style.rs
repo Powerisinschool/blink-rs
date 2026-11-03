@@ -204,10 +204,10 @@ fn default_display(node_id: DomNodeId, dom: &Dom) -> Display {
         match get_tag_name(tag) {
             "head" | "script" | "style" | "title" | "meta" | "link" => Display::None,
             "document" | "html" | "body" | "div" | "p" | "section" | "ul" | "li" => Display::BLOCK,
-            _ => Display::INLINE_BLOCK,
+            _ => Display::INLINE,
         }
     } else {
-        Display::INLINE_BLOCK
+        Display::INLINE
     }
 }
 

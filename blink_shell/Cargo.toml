@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+fontdue.workspace = true
 blink_html = { path = "../crates/blink_html" }
 blink_css = { path = "../crates/blink_css" }
 blink_layout = { path = "../crates/blink_layout" }
