@@ -152,6 +152,12 @@ impl FragmentArena {
         self.fragments.push(fragment);
         LayoutFragmentId::from_usize(fragment_id).unwrap()
     }
+
+    pub fn get_fragment_rect(&self, fragment_id: LayoutFragmentId) -> Option<&PhysicalRect> {
+        self.fragments
+            .get(fragment_id.get_index())
+            .map(|fragment| &fragment.rect)
+    }
 }
 
 impl Default for FragmentArena {

@@ -1,4 +1,5 @@
 use crate::engine::LayoutContext;
+use crate::fragment::LayoutFragmentId;
 use crate::style::{DisplayInside, DisplayOutside, compute_style};
 use blink_dom::DomNodeId;
 
@@ -47,6 +48,55 @@ impl InlineItem {
     pub fn append_text(&mut self, additional_text: &str) {
         if let InlineItemKind::Text(ref mut text) = self.kind {
             text.push_str(additional_text);
+        }
+    }
+}
+
+pub enum PreparedInlineItemKind {
+    TextSegment {
+        dom_node: DomNodeId,
+        text: String,
+        // range: Range<usize>,
+    },
+    AtomicInline {
+        fragment_id: LayoutFragmentId,
+    },
+    ForcedBreak,
+}
+
+pub struct PreparedInlineItem {
+    pub kind: PreparedInlineItemKind,
+    pub width: f32,
+    pub fit_width: f32,
+    pub height: f32,
+}
+
+impl PreparedInlineItem {
+    pub fn is_atomic_inline(&self) -> bool {
+        matches!(self.kind, PreparedInlineItemKind::AtomicInline { .. })
+    }
+
+    pub fn is_forced_break(&self) -> bool {
+        matches!(self.kind, PreparedInlineItemKind::ForcedBreak)
+    }
+
+    pub fn is_text_segment(&self) -> bool {
+        matches!(self.kind, PreparedInlineItemKind::TextSegment { .. })
+    }
+
+    pub fn get_text_segment(&self) -> Option<(&DomNodeId, &String)> {
+        if let PreparedInlineItemKind::TextSegment { dom_node, text } = &self.kind {
+            Some((dom_node, text))
+        } else {
+            None
+        }
+    }
+
+    pub fn get_atomic_inline_fragment_id(&self) -> Option<&LayoutFragmentId> {
+        if let PreparedInlineItemKind::AtomicInline { fragment_id } = &self.kind {
+            Some(fragment_id)
+        } else {
+            None
         }
     }
 }

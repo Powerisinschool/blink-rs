@@ -1,3 +1,4 @@
+mod atomic_inline;
 pub mod engine;
 pub mod fragment;
 pub mod geom;

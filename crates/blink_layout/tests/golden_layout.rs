@@ -32,13 +32,13 @@ fn layout_fixture(html: &str, css: &str) -> (Dom, FragmentArena) {
     let space = ConstraintSpace {
         available_size: PhysicalSize::new(VIEWPORT.0, VIEWPORT.1),
     };
-    let ctx = LayoutContext {
+    let mut ctx = LayoutContext {
         dom: &dom,
         stylesheet: &stylesheet,
         text_measurer: Box::new(blink_layout::text::FixedWidth {}),
     };
 
-    let arena = build_layout_tree(dom.get_root_node_id(), &ctx, space);
+    let arena = build_layout_tree(dom.get_root_node_id(), &mut ctx, space);
 
     (dom, arena)
 }

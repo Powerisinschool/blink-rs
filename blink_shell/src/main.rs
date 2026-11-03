@@ -42,7 +42,7 @@ fn main() {
 
     let root_id = output_dom.get_root_node_id();
 
-    let ctx = blink_layout::engine::LayoutContext {
+    let mut ctx = blink_layout::engine::LayoutContext {
         dom: &output_dom,
         stylesheet: &stylesheet,
         text_measurer: Box::new(FontdueMeasurer {
@@ -50,7 +50,7 @@ fn main() {
             font_size,
         }),
     };
-    let arena = build_layout_tree(root_id, &ctx, initial_space);
+    let arena = build_layout_tree(root_id, &mut ctx, initial_space);
 
     // println!();
     // println!("Fragment arena: {:#?}", arena);

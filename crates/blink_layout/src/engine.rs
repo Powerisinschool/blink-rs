@@ -1,7 +1,8 @@
+use crate::atomic_inline::layout_atomic_inline;
 use crate::fragment::{FragmentArena, FragmentKind, LayoutFragment, LayoutFragmentId};
 use crate::geom::{PhysicalOffset, PhysicalRect, PhysicalSize};
-use crate::inline::{InlineItemKind, collect_inline_items};
-use crate::line_breaker::break_lines;
+use crate::inline::{InlineItem, PreparedInlineItem, PreparedInlineItemKind, collect_inline_items};
+use crate::line_breaker::{Line, break_lines};
 use crate::space::ConstraintSpace;
 use crate::style::{ComputedStyle, Display, DisplayOutside, compute_style};
 use crate::text::TextMeasurer;
@@ -16,7 +17,7 @@ pub struct LayoutContext<'a> {
 
 pub fn build_layout_tree(
     root_id: DomNodeId,
-    ctx: &LayoutContext,
+    ctx: &mut LayoutContext,
     initial_space: ConstraintSpace,
 ) -> FragmentArena {
     let mut arena = FragmentArena::new();
@@ -45,9 +46,9 @@ fn make_absolute(arena: &mut FragmentArena, node_idx: usize, parent_x: f32, pare
     }
 }
 
-fn walk_node(
+pub(crate) fn walk_node(
     node_id: DomNodeId,
-    ctx: &LayoutContext,
+    ctx: &mut LayoutContext,
     space: ConstraintSpace,
     arena: &mut FragmentArena,
 ) -> Option<LayoutFragmentId> {
@@ -111,7 +112,7 @@ fn walk_node(
 
 fn layout_flow_children(
     node_id: DomNodeId,
-    ctx: &LayoutContext,
+    ctx: &mut LayoutContext,
     child_space: &ConstraintSpace,
     arena: &mut FragmentArena,
 ) -> (Option<LayoutFragmentId>, f32, f32) {
@@ -185,18 +186,95 @@ fn layout_flow_children(
     (first_child_fragment_id, current_y_cursor, max_line_width)
 }
 
-fn flush_inline_run(
-    inline_run: &mut Vec<DomNodeId>,
-    ctx: &LayoutContext,
+fn prepare_inline_items(
+    items: Vec<InlineItem>,
     max_width: f32,
+    ctx: &mut LayoutContext,
+    arena: &mut FragmentArena,
+) -> Vec<PreparedInlineItem> {
+    let mut prepared_items: Vec<PreparedInlineItem> = Vec::new();
+    let space_width = ctx.text_measurer.measure(" ");
+
+    for item in items {
+        if let Some(text) = item.get_text() {
+            let mut current_text = String::new();
+            // let mut current_start_index = 0;
+            for c in text.chars() {
+                match c {
+                    ' ' => {
+                        let fit_width = ctx.text_measurer.measure(&current_text);
+                        if current_text.is_empty() {
+                            if let Some(last) = prepared_items.last_mut()
+                                && !last.is_forced_break()
+                                && last.width == last.fit_width
+                            {
+                                last.width += space_width;
+                            }
+                        } else {
+                            let word = std::mem::take(&mut current_text);
+                            prepared_items.push(PreparedInlineItem {
+                                kind: PreparedInlineItemKind::TextSegment {
+                                    dom_node: item.dom_node,
+                                    text: word,
+                                    // range: current_start_index..i,
+                                },
+                                width: fit_width + space_width,
+                                fit_width,
+                                height: ctx.text_measurer.line_height(),
+                            });
+                            // current_start_index = i + 1;
+                            current_text.clear();
+                        }
+                    }
+                    _ => current_text.push(c),
+                }
+            }
+            if !current_text.is_empty() {
+                let width = ctx.text_measurer.measure(&current_text);
+                prepared_items.push(PreparedInlineItem {
+                    kind: PreparedInlineItemKind::TextSegment {
+                        dom_node: item.dom_node,
+                        text: current_text.clone(),
+                        // range: current_start_index..text.len(),
+                    },
+                    width,
+                    fit_width: width,
+                    height: ctx.text_measurer.line_height(),
+                });
+            }
+        } else if item.is_forced_break() {
+            prepared_items.push(PreparedInlineItem {
+                kind: PreparedInlineItemKind::ForcedBreak,
+                width: 0.0,
+                fit_width: 0.0,
+                height: 0.0,
+            });
+        } else if item.is_atomic_inline()
+            && let Some(layout) = layout_atomic_inline(item.dom_node, max_width, ctx, arena)
+        {
+            prepared_items.push(PreparedInlineItem {
+                kind: PreparedInlineItemKind::AtomicInline {
+                    fragment_id: layout.fragment_id,
+                },
+                width: layout.width,
+                fit_width: layout.width,
+                height: layout.height,
+            });
+        }
+    }
+
+    prepared_items
+}
+
+fn build_line_fragments(
+    lines: Vec<Line>,
     current_y_cursor: &mut f32,
+    ctx: &mut LayoutContext,
     arena: &mut FragmentArena,
     parent_first_child: &mut Option<LayoutFragmentId>,
     parent_previous_child: &mut Option<LayoutFragmentId>,
 ) -> f32 {
-    let items = collect_inline_items(inline_run, ctx);
-    let lines = break_lines(items, max_width, ctx);
-
+    // eprintln!("build_line_fragments received {} lines", lines.len());
     let mut run_max_width: f32 = 0.0;
 
     for line in lines {
@@ -223,43 +301,29 @@ fn flush_inline_run(
         let mut line_prev_child: Option<LayoutFragmentId> = None;
 
         for item in line.items {
-            let child_fragment_id_opt = match item.kind {
-                InlineItemKind::Text(text) => {
-                    let width = ctx.text_measurer.measure(&text);
-                    let height = ctx.text_measurer.line_height();
-
-                    let text_rect = PhysicalRect::new(
-                        PhysicalOffset::new(line_x, 0.0),
-                        PhysicalSize::new(width, height),
-                    );
-                    let text_style = compute_style(item.dom_node, ctx.dom, ctx.stylesheet);
-                    let text_fragment = LayoutFragment::new(
-                        Some(item.dom_node),
-                        text_rect,
-                        text_style,
-                        FragmentKind::Text(text),
-                    );
-
-                    Some(arena.add_fragment(text_fragment))
-                }
-                InlineItemKind::AtomicInline => {
-                    let child_space = ConstraintSpace {
-                        available_size: PhysicalSize::new(max_width, f32::MAX),
-                    };
-
-                    walk_node(item.dom_node, ctx, child_space, arena)
-                }
-                InlineItemKind::ForcedBreak => None,
+            let child_fragment_id_opt = if let Some((dom_node, text)) = item.get_text_segment() {
+                let text_rect = PhysicalRect::new(
+                    PhysicalOffset::new(line_x, 0.0),
+                    PhysicalSize::new(item.fit_width, item.height),
+                );
+                let text_style = compute_style(*dom_node, ctx.dom, ctx.stylesheet);
+                let fragment_id = LayoutFragment::new(
+                    Some(*dom_node),
+                    text_rect,
+                    text_style,
+                    FragmentKind::Text(text.clone()),
+                );
+                Some(arena.add_fragment(fragment_id))
+            } else if let Some(fragment_id) = item.get_atomic_inline_fragment_id() {
+                Some(*fragment_id)
+            } else if item.is_forced_break() {
+                None
+            } else {
+                unreachable!("Unexpected inline item kind when building line fragments");
             };
 
             if let Some(child_fragment_id) = child_fragment_id_opt {
                 arena.fragments[child_fragment_id.get_index()].rect.origin.x = line_x;
-
-                let width = arena.fragments[child_fragment_id.get_index()]
-                    .rect
-                    .size
-                    .width;
-                line_x += width;
 
                 if line_first_child.is_none() {
                     line_first_child = Some(child_fragment_id);
@@ -270,6 +334,7 @@ fn flush_inline_run(
                 }
                 line_prev_child = Some(child_fragment_id);
             }
+            line_x += item.width;
         }
 
         if let Some(first) = line_first_child {
@@ -278,6 +343,56 @@ fn flush_inline_run(
         *current_y_cursor += line.height;
     }
 
+    run_max_width
+}
+
+fn flush_inline_run(
+    inline_run: &mut Vec<DomNodeId>,
+    ctx: &mut LayoutContext,
+    max_width: f32,
+    current_y_cursor: &mut f32,
+    arena: &mut FragmentArena,
+    parent_first_child: &mut Option<LayoutFragmentId>,
+    parent_previous_child: &mut Option<LayoutFragmentId>,
+) -> f32 {
+    let items = collect_inline_items(inline_run, ctx);
+    let prepared_items = prepare_inline_items(items, max_width, ctx, arena);
+    // eprintln!("Prepared items: {}", prepared_items.len());
+
+    // for (i, item) in prepared_items.iter().enumerate() {
+    //     eprintln!(
+    //         "  [{i}] text={}, atomic={}, forced={}, width={}, fit_width={}, height={}",
+    //         item.is_text_segment(),
+    //         item.is_atomic_inline(),
+    //         item.is_forced_break(),
+    //         item.width,
+    //         item.fit_width,
+    //         item.height,
+    //     );
+    // }
+
+    let min_line_height = ctx.text_measurer.line_height();
+    let lines = break_lines(prepared_items, max_width, min_line_height);
+
+    // eprintln!("Produced lines: {}", lines.len());
+
+    // for (i, line) in lines.iter().enumerate() {
+    //     eprintln!(
+    //         "  Line {i}: width={}, height={}, items={}",
+    //         line.width,
+    //         line.height,
+    //         line.items.len(),
+    //     );
+    // }
+
+    let run_max_width = build_line_fragments(
+        lines,
+        current_y_cursor,
+        ctx,
+        arena,
+        parent_first_child,
+        parent_previous_child,
+    );
     inline_run.clear();
 
     run_max_width
@@ -315,13 +430,13 @@ mod tests {
             available_size: PhysicalSize::new(800.0, 600.0),
         };
 
-        let ctx = LayoutContext {
+        let mut ctx = LayoutContext {
             dom: &dom,
             stylesheet: &stylesheet,
             text_measurer: Box::new(FixedWidth {}),
         };
 
-        let arena = build_layout_tree(parent, &ctx, space);
+        let arena = build_layout_tree(parent, &mut ctx, space);
 
         let parent_fragment = arena
             .fragments
@@ -372,13 +487,13 @@ mod tests {
             available_size: PhysicalSize::new(800.0, 600.0),
         };
 
-        let ctx = LayoutContext {
+        let mut ctx = LayoutContext {
             dom: &dom,
             stylesheet: &stylesheet,
             text_measurer: Box::new(FixedWidth {}),
         };
 
-        let arena = build_layout_tree(parent, &ctx, space);
+        let arena = build_layout_tree(parent, &mut ctx, space);
 
         let child1_fragment = arena
             .fragments
