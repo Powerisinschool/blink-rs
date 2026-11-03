@@ -46,8 +46,10 @@ pub fn render_to_png(
             // println!("Rendering text fragment: {:?}", text);
             let mut cursor_x = rect_data.origin.x;
 
-            let metrics = font.horizontal_line_metrics(font_size).unwrap();
-            let baseline_y = rect_data.origin.y + metrics.ascent;
+            let baseline_y = rect_data.origin.y
+                + font
+                    .horizontal_line_metrics(font_size)
+                    .map_or(font_size, |metrics| metrics.ascent);
 
             for ch in text.chars() {
                 let (glyph_metrics, glyph_bitmap) = font.rasterize(ch, font_size);
