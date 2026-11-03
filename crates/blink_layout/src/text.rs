@@ -35,7 +35,7 @@ impl TextMeasurer for FontdueMeasurer {
             // Combine ascent, descent, and gap line heights cleanly
             metrics.ascent + (-metrics.descent) + metrics.line_gap
         } else {
-            16.0 // Safe fallback
+            self.font_size // Safe fallback
         }
     }
 }
