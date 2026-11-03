@@ -56,6 +56,14 @@ fn main() {
     // println!("Fragment arena: {:#?}", arena);
 
     // Output the rendered image
-    render_to_png(&arena, OUTPUT_WIDTH, OUTPUT_HEIGHT, "output.png").unwrap();
+    render_to_png(
+        font,
+        font_size,
+        &arena,
+        OUTPUT_WIDTH,
+        OUTPUT_HEIGHT,
+        "output.png",
+    )
+    .unwrap();
     println!("Phase 1 pipeline executed successfully! Frame written to output.png");
 }

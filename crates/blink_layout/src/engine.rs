@@ -125,6 +125,11 @@ fn layout_flow_children(
     let mut current_dom_child = ctx.dom.get_first_child(node_id);
 
     while let Some(dom_child) = current_dom_child {
+        if ctx.dom.get_node(dom_child).is_none() {
+            current_dom_child = ctx.dom.get_next_sibling(dom_child);
+            continue;
+        }
+
         let is_inline = if ctx.dom.get_node(dom_child).unwrap().is_text() {
             true
         } else {

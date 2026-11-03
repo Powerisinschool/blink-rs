@@ -1,26 +1,29 @@
 use blink_layout::fragment::FragmentArena;
+use fontdue::Font;
 use tiny_skia::{Color, ColorU8, Paint, PathBuilder, Pixmap, Rect, Stroke, Transform};
 
 pub fn render_to_png(
+    font: Font,
+    font_size: f32,
     arena: &FragmentArena,
     width: u32,
     height: u32,
     output_path: &str,
 ) -> Result<(), String> {
-    let font_data = std::fs::read("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")
-        .or_else(|_| std::fs::read("C:\\Windows\\Fonts\\arial.ttf"))
-        .or_else(|_| std::fs::read("/Library/Fonts/Arial Unicode.ttf"))
-        .map_err(|err| format!("Failed to read font file: {}", err))?;
-
-    let font = fontdue::Font::from_bytes(font_data, fontdue::FontSettings::default())
-        .map_err(|err| format!("Failed to parse font: {}", err))?;
+    // let font_data = std::fs::read("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")
+    //     .or_else(|_| std::fs::read("C:\\Windows\\Fonts\\arial.ttf"))
+    //     .or_else(|_| std::fs::read("/Library/Fonts/Arial Unicode.ttf"))
+    //     .map_err(|err| format!("Failed to read font file: {}", err))?;
+    //
+    // let font = fontdue::Font::from_bytes(font_data, fontdue::FontSettings::default())
+    //     .map_err(|err| format!("Failed to parse font: {}", err))?;
 
     let mut pixmap =
         Pixmap::new(width, height).ok_or_else(|| "Failed to create pixmap".to_string())?;
 
     pixmap.fill(Color::WHITE);
 
-    let font_size = 16.0;
+    // let font_size = 16.0;
 
     for fragment in &arena.fragments {
         let rect_data = fragment.rect;
@@ -40,7 +43,7 @@ pub fn render_to_png(
         };
 
         if let Some(text) = fragment.get_text() {
-            println!("Rendering text fragment: {:?}", text);
+            // println!("Rendering text fragment: {:?}", text);
             let mut cursor_x = rect_data.origin.x;
 
             let metrics = font.horizontal_line_metrics(font_size).unwrap();
