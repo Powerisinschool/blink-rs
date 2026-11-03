@@ -125,7 +125,9 @@ fn layout_flow_children(
     let mut current_dom_child = ctx.dom.get_first_child(node_id);
 
     while let Some(dom_child) = current_dom_child {
-        if ctx.dom.get_node(dom_child).is_none() {
+        let child_style = compute_style(dom_child, ctx.dom, ctx.stylesheet);
+
+        if child_style.display.is_none() {
             current_dom_child = ctx.dom.get_next_sibling(dom_child);
             continue;
         }
