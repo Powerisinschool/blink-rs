@@ -68,7 +68,7 @@ An experimental web rendering engine in Rust, focused on the **DOM → style →
 Known gaps, many of which are good places to start contributing (see [CONTRIBUTING.md](CONTRIBUTING.md)):
 
 - Basic text layout and rendering are supported
-- The parser can emit several adjacent text nodes for one run of text; they are not merged.
+- Adjacent parser-emitted text nodes are merged by the tree builder; text fragments remain associated with their DOM text nodes.
 - True inline flow has been introduced, with some limitations.
 - Text wraps at supported whitespace boundaries.
 - An auto-width inline box containing only block children collapses to zero width.
@@ -110,7 +110,7 @@ Unit tests cover selector matching, specificity, descendant chains, length parsi
 - [x] Whitespace collapsing and text fragments
 - [x] Line breaking and wrapping
 - [x] Rename the current `Inline` to `InlineBlock`; introduce true inline layout
-- [x] Golden tests for all fixtures in `assets/`
+- [x] Golden tests for all fixtures in `crates/blink_layout/tests/fixtures/`
 
 ### Phase 2: LayoutNG-style architecture
 
