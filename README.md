@@ -2,7 +2,7 @@
 
 An experimental web rendering engine in Rust, focused on the **DOM → style → layout** pipeline. It takes the single-threaded, constraint-driven layout model of Chromium's LayoutNG as its reference design and rebuilds it around a flat, arena-allocated DOM.
 
-> **Status: pre-alpha, Phases 1 and 1.5 complete (proof of concept).** The engine supports block and inline layout, basic text measurement, whitespace collapsing, text fragments, line breaking and wrapping, and basic glyph rasterization. It produces rendered PNG output through the layout and rendering pipeline. Full text shaping and most CSS features remain unimplemented. See [Current limitations](#current-limitations) and the [Roadmap](#roadmap).
+> **Status: pre-alpha, Phases 1 and 1.5 complete (proof of concept).** The engine supports block and inline layout, basic text measurement, whitespace collapsing, text fragments, line breaking and wrapping, and basic glyph rasterization. It produces rendered PNG output through the layout and rendering pipeline. Full-text shaping and most CSS features remain unimplemented. See [Current limitations](#current-limitations) and the [Roadmap](#roadmap).
 >
 > This is an independent project. It is not affiliated with Google or the Chromium project; Blink and LayoutNG are used as architectural references only.
 
@@ -43,12 +43,12 @@ An experimental web rendering engine in Rust, focused on the **DOM → style →
 
 ### Arena DOM (`blink_dom`)
 
-- Nodes live in a single `Vec<DomNode>` and are addressed by `DomNodeId`, a typed, 1-based, non-zero `u32` handle. `Option<DomNodeId>` is therefore 4 bytes.
+- Nodes live in a single `Vec<DomNode>` and are addressed by `DomNodeId`, a typed, 1-based, non-zero `u32` handle. `Option<DomNodeId>` is therefore 4 (four) bytes.
 - Tree structure uses intrusive links: each node stores `parent` and `next_sibling`, and elements store `first_child`. There is no per-node `Vec<Child>`.
 - `NodeKind` is `Element`, `Text` or `EmptyLeaf` (`<br>`, `<hr>`).
 - Tag names are `u8` indices into a sorted static table of HTML tags: O(log n) to look up by name, O(1) to get the name back.
 - Attributes are stored out of line and referenced from element nodes, so text nodes and attribute-less elements pay nothing for them.
-- The DOM uses a unified storage implementation for nodes, attributes, and character data.
+- Nodes are stored in a `Vec<DomNode>`; attributes and character data are stored out-of-line in separate typed `SlotStore`s.
 
 ### Style (`blink_layout::style`)
 
@@ -61,16 +61,18 @@ An experimental web rendering engine in Rust, focused on the **DOM → style →
 - Layout is a recursive pass over the DOM. For each node it computes style, prunes `display: none`, resolves size from the parent's `ConstraintSpace`, lays out children, then resolves any auto height.
 - Block children stack vertically. Inline children flow left to right on a line whose height is the tallest child. Auto-width blocks take the available width; auto-width inline boxes shrink-wrap their content.
 - Output is a `FragmentArena`: a flat `Vec<LayoutFragment>` with `first_child`/`next_sibling` links, mirroring the DOM's topology. Fragments are built parent-relative and then converted to absolute coordinates in a final pass.
-- Fragments are **not yet immutable**. They are patched while layout runs. Making them immutable is a Phase 2 goal.
+- Fragments are **not yet immutable**. They are patched while the layout runs. Making them immutable is a Phase 2 goal.
 - Unsupported `display` declarations are ignored.
 - Unknown tag names are registered dynamically, but generic tag-name lookup currently falls back to `div`.
+
+### Rendering (`blink_render`)
 - Basic glyph rasterization and fragment rendering are supported.
 
 ## Current limitations
 
 Known gaps, many of which are good places to start contributing (see [CONTRIBUTING.md](CONTRIBUTING.md)):
 
-- Full text shaping, kerning, and ligatures are not implemented.
+- Full-text shaping, kerning, and ligatures are not implemented.
 - Text wraps at supported whitespace boundaries; comprehensive Unicode line breaking and hyphenation are not implemented.
 - The inline formatting model is still incomplete.
 - Glyphs are rasterized individually rather than through a full text-shaping pipeline.
@@ -91,11 +93,10 @@ cargo run -p blink_shell     # lays out assets/test.html with assets/test.css an
 cargo test --workspace                          # default DOM layout
 ```
 
-Previously, the `dense-core` feature was used to test the alternative DOM storage layout. It is now the default and has been mostly removed from the codebase. The remaining `dense-core` feature flag is retained for potential future testing of the DOM storage and can be run with:
+Previously, the `dense-core` feature was used to test the alternative DOM storage layout. It is now the default and has been mostly removed from the codebase. The remaining `dense-core` feature flag is retained but serves as an inert compatibility flag and can be, thus, ignored. For potential future testing of this feature, it can be run with:
 
 ```sh
 cargo test --workspace --features blink_dom/dense-core
-cargo bench # benchmark the layout engine
 ```
 
 Unit tests cover selector matching, specificity, descendant chains, length parsing, and attribute lookup across text and `<br>` nodes.
