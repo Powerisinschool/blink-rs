@@ -48,7 +48,7 @@ An experimental web rendering engine in Rust, focused on the **DOM → style →
 - `NodeKind` is `Element`, `Text` or `EmptyLeaf` (`<br>`, `<hr>`).
 - Tag names are `u8` indices into a sorted static table of HTML tags: O(log n) to look up by name, O(1) to get the name back.
 - Attributes are stored out of line and referenced from element nodes, so text nodes and attribute-less elements pay nothing for them.
-- Two storage layouts sit behind the `dense-core` Cargo feature. [`benches/dom_comparison.rs`](benches/dom_comparison.rs) compares them. Both must pass the test suite.
+- The DOM uses a unified storage implementation for nodes, attributes, and character data.
 
 ### Style (`blink_layout::style`)
 
@@ -62,7 +62,8 @@ An experimental web rendering engine in Rust, focused on the **DOM → style →
 - Block children stack vertically. Inline children flow left to right on a line whose height is the tallest child. Auto-width blocks take the available width; auto-width inline boxes shrink-wrap their content.
 - Output is a `FragmentArena`: a flat `Vec<LayoutFragment>` with `first_child`/`next_sibling` links, mirroring the DOM's topology. Fragments are built parent-relative and then converted to absolute coordinates in a final pass.
 - Fragments are **not yet immutable**. They are patched while layout runs. Making them immutable is a Phase 2 goal.
-- Unknown `display` values fall back to `inline`. Unknown tag names currently extend the tag list.
+- Unsupported `display` declarations are ignored.
+- Unknown tag names are registered dynamically, but generic tag-name lookup currently falls back to `div`.
 - Basic glyph rasterization and fragment rendering are supported.
 
 ## Current limitations
@@ -88,13 +89,13 @@ cargo run -p blink_shell     # lays out assets/test.html with assets/test.css an
 
 ```sh
 cargo test --workspace                          # default DOM layout
-cargo bench                                     # DOM storage comparison (see run_bench.sh)
 ```
 
-Previously, the `dense-core` feature was used to test the alternative DOM storage layout. It is now the default, and has been mostly removed from the codebase. The remaining `dense-core` feature flag is retained for potential future testing of the DOM storage and can be run with:
+Previously, the `dense-core` feature was used to test the alternative DOM storage layout. It is now the default and has been mostly removed from the codebase. The remaining `dense-core` feature flag is retained for potential future testing of the DOM storage and can be run with:
 
 ```sh
 cargo test --workspace --features blink_dom/dense-core
+cargo bench # benchmark the layout engine
 ```
 
 Unit tests cover selector matching, specificity, descendant chains, length parsing, and attribute lookup across text and `<br>` nodes.
