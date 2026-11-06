@@ -28,16 +28,16 @@ An experimental web rendering engine in Rust, focused on the **DOM → style →
 
 ## Workspace
 
-| Crate | Responsibility |
-|---|---|
-| `blink_dom` | Arena-allocated DOM tree, tag table, attribute storage |
-| `blink_html` | HTML parsing into the arena DOM using `html5ever` |
-| `blink_css` | CSS tokenizer/parser and the `CSSStyleSheet`/`CSSStyleRule` model |
+| Crate          | Responsibility                                                       |
+|----------------|----------------------------------------------------------------------|
+| `blink_dom`    | Arena-allocated DOM tree, tag table, attribute storage               |
+| `blink_html`   | HTML parsing into the arena DOM using `html5ever`                    |
+| `blink_css`    | CSS tokenizer/parser and the `CSSStyleSheet`/`CSSStyleRule` model    |
 | `blink_layout` | Selector matching, cascade, `ConstraintSpace`, layout, fragment tree |
-| `blink_render` | Turns the fragment tree into pixels |
-| `blink_shell` | Executable that wires the crates together |
-| `blink_core` | Shared primitives, notably the typed `Id<T>` handle |
-| `xtask` | Developer automation |
+| `blink_render` | Turns the fragment tree into pixels                                  |
+| `blink_shell`  | Executable that wires the crates together                            |
+| `blink_core`   | Shared primitives, notably the typed `Id<T>` handle                  |
+| `xtask`        | Developer automation (planned)                                       |
 
 ## Design
 
@@ -53,7 +53,7 @@ An experimental web rendering engine in Rust, focused on the **DOM → style →
 ### Style (`blink_layout::style`)
 
 - Selectors: type, `#id`, `.class`, compound selectors, and the descendant combinator.
-- Cascade: matching rules are ordered by specificity, with source order breaking ties. Supported properties: `display` (`block`, `inline`, `none`), `width` and `height` (`px`).
+- Cascade: matching rules are ordered by specificity, with source order breaking ties. Supported properties: `display` (`block`, `inline`, `inline-block`, `none`), `width` and `height` (`px`).
 - A small built-in user-agent default maps tags to a default `display` (for example `div` → block, `head` → none).
 
 ### Layout (`blink_layout::engine`)
@@ -62,20 +62,19 @@ An experimental web rendering engine in Rust, focused on the **DOM → style →
 - Block children stack vertically. Inline children flow left to right on a line whose height is the tallest child. Auto-width blocks take the available width; auto-width inline boxes shrink-wrap their content.
 - Output is a `FragmentArena`: a flat `Vec<LayoutFragment>` with `first_child`/`next_sibling` links, mirroring the DOM's topology. Fragments are built parent-relative and then converted to absolute coordinates in a final pass.
 - Fragments are **not yet immutable**. They are patched while layout runs. Making them immutable is a Phase 2 goal.
+- Unknown `display` values fall back to `inline`. Unknown tag names currently extend the tag list.
 
 ## Current limitations
 
 Known gaps, many of which are good places to start contributing (see [CONTRIBUTING.md](CONTRIBUTING.md)):
 
-- Basic text layout and rendering are supported
-- Adjacent parser-emitted text nodes are merged by the tree builder; text fragments remain associated with their DOM text nodes.
-- True inline flow has been introduced, with some limitations.
-- Text wraps at supported whitespace boundaries.
-- An auto-width inline box containing only block children collapses to zero width.
+- Full text shaping, kerning, and ligatures are not implemented.
+- Text wraps at supported whitespace boundaries; comprehensive Unicode line breaking and hyphenation are not implemented.
+- The inline formatting model is still incomplete.
+- Glyphs are rasterized individually rather than through a full text-shaping pipeline.
 - No margin, padding, border, `position`, floats, or flexbox.
 - No property inheritance. Only `px` lengths are parsed.
 - No child, sibling or attribute selectors, no pseudo-classes, no `!important`.
-- Unknown `display` values fall back to `inline`. Unknown tag names currently map to tag index 0.
 - Basic glyph rasterization and fragment rendering are supported.
 
 ## Building and running
@@ -89,11 +88,32 @@ cargo run -p blink_shell     # lays out assets/test.html with assets/test.css an
 
 ```sh
 cargo test --workspace                          # default DOM layout
-cargo test --workspace --features blink_dom/dense-core   # dense-core DOM layout
 cargo bench                                     # DOM storage comparison (see run_bench.sh)
 ```
 
-Unit tests cover selector matching, specificity, descendant chains, length parsing, and attribute lookup across text and `<br>` nodes. A golden test asserting fragment rectangles for `assets/test.html` is planned.
+Previously, the `dense-core` feature was used to test the alternative DOM storage layout. It is now the default, and has been mostly removed from the codebase. The remaining `dense-core` feature flag is retained for potential future testing of the DOM storage and can be run with:
+
+```sh
+cargo test --workspace --features blink_dom/dense-core
+```
+
+Unit tests cover selector matching, specificity, descendant chains, length parsing, and attribute lookup across text and `<br>` nodes.
+
+The golden layout tests cover five fixtures: `basic`, `inline_wrapping`,
+`mixed_block_inline`, `nested_inline`, and `display_none`.
+
+Run them with:
+
+```sh
+cargo test -p blink_layout --test golden_layout
+```
+
+If you change the layout engine, update the expected rectangles in `crates/blink_layout/tests/fixtures/` and commit them. A page that renders "about right" is not a test.
+To regenerate the expected rectangles for all fixtures, run:
+
+```sh
+BLESS=1 cargo test -p blink_layout --test golden_layout
+```
 
 ## Roadmap
 
@@ -125,7 +145,7 @@ Unit tests cover selector matching, specificity, descendant chains, length parsi
 - [ ] Invalidation manager connecting DOM mutation to restyle, relayout, and repaint
 - [ ] Single-threaded event loop for timers, input and layout frames
 
-Skia-backed painting and text shaping (in `blink_render`) will land alongside Phases 1.5 and 2.
+Full text shaping and a more complete painting pipeline remain future work.
 
 ## Contributing
 
