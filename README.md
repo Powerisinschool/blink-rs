@@ -63,6 +63,7 @@ An experimental web rendering engine in Rust, focused on the **DOM → style →
 - Output is a `FragmentArena`: a flat `Vec<LayoutFragment>` with `first_child`/`next_sibling` links, mirroring the DOM's topology. Fragments are built parent-relative and then converted to absolute coordinates in a final pass.
 - Fragments are **not yet immutable**. They are patched while layout runs. Making them immutable is a Phase 2 goal.
 - Unknown `display` values fall back to `inline`. Unknown tag names currently extend the tag list.
+- Basic glyph rasterization and fragment rendering are supported.
 
 ## Current limitations
 
@@ -75,7 +76,6 @@ Known gaps, many of which are good places to start contributing (see [CONTRIBUTI
 - No margin, padding, border, `position`, floats, or flexbox.
 - No property inheritance. Only `px` lengths are parsed.
 - No child, sibling or attribute selectors, no pseudo-classes, no `!important`.
-- Basic glyph rasterization and fragment rendering are supported.
 
 ## Building and running
 
