@@ -134,14 +134,21 @@ BLESS=1 cargo test -p blink_layout --test golden_layout
 - [x] Rename the current `Inline` to `InlineBlock`; introduce true inline layout
 - [x] Golden tests for all fixtures in `crates/blink_layout/tests/fixtures/`
 
-### Phase 2: LayoutNG-style architecture
+### Phase 2: Serialization & Alternate Render Targets
+
+- [ ] Create `blink_svg` crate to map layout fragments to declarative SVG `<rect>` and `<text>` elements.
+- [ ] Create `blink_figma` crate to serialize fragments into Figma's JSON schema (absolute positioning).
+- [ ] Abstract a standard `Renderer` or `Backend` trait to decouple the FragmentArena from `blink_render`.
+- [ ] Experimental: Map CSS constraints directly to Figma Auto Layout properties.
+
+### Phase 3: LayoutNG-style architecture
 
 - [ ] Immutable `ConstraintSpace` passed down the tree
 - [ ] Immutable physical fragment tree
 - [ ] Margin, padding, and border (box model)
 - [ ] Incremental layout and caching driven by invalidation boundaries
 
-### Phase 3: Binding and reactive layer
+### Phase 4: Binding and reactive layer
 
 - [ ] Bindings between V8 objects and arena DOM nodes
 - [ ] Invalidation manager connecting DOM mutation to restyle, relayout, and repaint
