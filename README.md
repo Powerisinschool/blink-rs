@@ -19,11 +19,13 @@ An experimental web rendering engine in Rust, focused on the **DOM → style →
 ## Pipeline
 
 ```
- HTML string ──► blink_html ──► Dom (arena) ───────────┐
-                (html5ever)                            │
-                                                       ▼
+ HTML string ──► blink_html ──► Dom (arena) ───────────┐                 ┌─────────► blink_svg ──► output.svg
+                (html5ever)                            │                 │
+                                                       ▼                 │
  CSS string  ──► blink_css  ──► CSSStyleSheet ──► blink_layout ──► FragmentArena ──► blink_render ──► output.png
-                                                 (style + layout)
+                                                 (style + layout)        │
+                                                                         │
+                                                                          ─────────► blink_figma ──► output.json
 ```
 
 ## Workspace
