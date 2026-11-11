@@ -158,6 +158,10 @@ impl FragmentArena {
             .get(fragment_id.get_index())
             .map(|fragment| &fragment.rect)
     }
+
+    pub fn get_fragment(&self, fragment_id: LayoutFragmentId) -> Option<&LayoutFragment> {
+        self.fragments.get(fragment_id.get_index())
+    }
 }
 
 impl Default for FragmentArena {
