@@ -88,6 +88,7 @@ dependencies = [
  "blink_html",
  "blink_layout",
  "blink_render",
+ "blink_svg",
  "fontdue",
 ]
 

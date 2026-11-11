@@ -9,3 +9,4 @@ blink_html = { path = "../crates/blink_html" }
 blink_css = { path = "../crates/blink_css" }
 blink_layout = { path = "../crates/blink_layout" }
 blink_render = { path = "../crates/blink_render" }
+blink_svg = { path = "../crates/blink_svg" }
