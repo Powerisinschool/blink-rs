@@ -3,23 +3,11 @@ use crate::fragment::{FragmentArena, LayoutFragment, LayoutFragmentId};
 pub trait Renderer {
     type Context;
 
-    fn begin_fragment(
-        &mut self,
-        fragment: &LayoutFragment,
-        ctx: &Self::Context,
-    ) -> Self::Context;
+    fn begin_fragment(&mut self, fragment: &LayoutFragment, ctx: &Self::Context) -> Self::Context;
 
-    fn paint_fragment(
-        &mut self,
-        fragment: &LayoutFragment,
-        ctx: &Self::Context,
-    );
+    fn paint_fragment(&mut self, fragment: &LayoutFragment, ctx: &Self::Context);
 
-    fn end_fragment(
-        &mut self,
-        fragment: &LayoutFragment,
-        ctx: &Self::Context,
-    );
+    fn end_fragment(&mut self, fragment: &LayoutFragment, ctx: &Self::Context);
 }
 
 pub struct FragmentWalker;
