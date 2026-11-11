@@ -33,7 +33,11 @@ impl SvgRenderer {
 impl Renderer for SvgRenderer {
     type Context = RenderState;
 
-    fn begin_fragment(&mut self, _fragment: &LayoutFragment, _ctx: &Self::Context) -> Self::Context {
+    fn begin_fragment(
+        &mut self,
+        _fragment: &LayoutFragment,
+        _ctx: &Self::Context,
+    ) -> Self::Context {
         RenderState {}
     }
 
