@@ -38,7 +38,10 @@ impl<T> Id<T> {
     }
 
     pub fn from_usize(id: usize) -> Option<Self> {
-        Self::from_u32((id + 1) as u32)
+        if id > u32::MAX as usize {
+            return None;
+        }
+        Self::from_u32((id as u32).checked_add(1)?)
     }
 
     pub fn get(&self) -> u32 {

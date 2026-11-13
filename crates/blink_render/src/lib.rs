@@ -1,4 +1,4 @@
-use blink_layout::fragment::{FragmentArena, FragmentKind, LayoutFragment, LayoutFragmentId};
+use blink_layout::fragment::{FragmentArena, FragmentKind, LayoutFragment};
 use blink_layout::geom::PhysicalOffset;
 use blink_layout::walker::{FragmentWalker, Renderer};
 use fontdue::Font;
@@ -138,8 +138,8 @@ impl Renderer for CanvasRenderer {
                 self.canvas.draw_box(
                     abs_origin.x,
                     abs_origin.y,
-                    fragment.rect.size.width,
-                    fragment.rect.size.height,
+                    fragment.get_width(),
+                    fragment.get_height(),
                     ColorU8::from_rgba(30, 110, 210, 255),
                 );
             }
@@ -175,7 +175,7 @@ pub fn render_to_png(
         canvas: Canvas::new(width, height),
     };
 
-    let Some(root_id) = LayoutFragmentId::from_usize(0) else {
+    let Some(root_id) = arena.get_root() else {
         return Err("Failed to create root fragment ID".to_string());
     };
     FragmentWalker::walk(

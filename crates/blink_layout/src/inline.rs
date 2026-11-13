@@ -1,5 +1,5 @@
 use crate::engine::LayoutContext;
-use crate::fragment::LayoutFragmentId;
+use crate::fragment::LayoutFragment;
 use crate::style::{DisplayInside, DisplayOutside, compute_style};
 use blink_dom::DomNodeId;
 
@@ -59,7 +59,7 @@ pub enum PreparedInlineItemKind {
         // range: Range<usize>,
     },
     AtomicInline {
-        fragment_id: LayoutFragmentId,
+        fragment: LayoutFragment,
     },
     ForcedBreak,
 }
@@ -92,9 +92,9 @@ impl PreparedInlineItem {
         }
     }
 
-    pub fn get_atomic_inline_fragment_id(&self) -> Option<&LayoutFragmentId> {
-        if let PreparedInlineItemKind::AtomicInline { fragment_id } = &self.kind {
-            Some(fragment_id)
+    pub fn get_atomic_inline_fragment(&self) -> Option<&LayoutFragment> {
+        if let PreparedInlineItemKind::AtomicInline { fragment } = &self.kind {
+            Some(fragment)
         } else {
             None
         }

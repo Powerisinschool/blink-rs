@@ -14,6 +14,18 @@ impl PhysicalOffset {
     pub fn new(x: f32, y: f32) -> PhysicalOffset {
         Self { x, y }
     }
+
+    #[must_use]
+    pub fn with_x(mut self, x: f32) -> Self {
+        self.x = x;
+        self
+    }
+
+    #[must_use]
+    pub fn with_y(mut self, y: f32) -> Self {
+        self.y = y;
+        self
+    }
 }
 
 impl std::ops::Add for PhysicalOffset {
@@ -54,5 +66,12 @@ impl PhysicalSize {
 impl PhysicalRect {
     pub fn new(origin: PhysicalOffset, size: PhysicalSize) -> Self {
         Self { origin, size }
+    }
+
+    pub fn from_xywh(x: f32, y: f32, width: f32, height: f32) -> Self {
+        Self {
+            origin: PhysicalOffset::new(x, y),
+            size: PhysicalSize::new(width, height),
+        }
     }
 }

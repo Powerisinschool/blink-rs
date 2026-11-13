@@ -1,4 +1,4 @@
-use blink_layout::fragment::{FragmentArena, FragmentKind, LayoutFragment, LayoutFragmentId};
+use blink_layout::fragment::{FragmentArena, FragmentKind, LayoutFragment};
 use blink_layout::geom::PhysicalOffset;
 use blink_layout::walker::{FragmentWalker, Renderer};
 
@@ -51,8 +51,8 @@ impl Renderer for SvgRenderer {
     ) {
         let x = abs_origin.x;
         let y = abs_origin.y;
-        let width = fragment.rect.size.width;
-        let height = fragment.rect.size.height;
+        let width = fragment.get_width();
+        let height = fragment.get_height();
 
         match &fragment.kind {
             FragmentKind::Box => {
@@ -98,7 +98,7 @@ pub fn render_to_svg(
 ) -> Result<String, String> {
     let mut renderer = SvgRenderer::new(width, height, font_family, font_size);
 
-    let Some(root_id) = LayoutFragmentId::from_usize(0) else {
+    let Some(root_id) = arena.get_root() else {
         return Err("Failed to create root fragment ID".to_string());
     };
 
