@@ -1,6 +1,5 @@
 use crate::engine::{LayoutContext, layout_node};
 use crate::fragment::{FragmentArena, LayoutFragment};
-use crate::geom::PhysicalSize;
 use crate::space::ConstraintSpace;
 use blink_dom::DomNodeId;
 
@@ -10,12 +9,7 @@ pub fn layout_atomic_inline(
     ctx: &mut LayoutContext,
     arena: &mut FragmentArena,
 ) -> Option<LayoutFragment> {
-    let child_space = ConstraintSpace {
-        available_size: PhysicalSize {
-            width: available_width,
-            height: f32::MAX,
-        },
-    };
+    let child_space = ConstraintSpace::new(available_width, f32::MAX);
 
     layout_node(node_id, ctx, child_space, arena)
 }

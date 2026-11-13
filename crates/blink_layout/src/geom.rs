@@ -4,6 +4,38 @@ pub struct PhysicalSize {
     pub height: f32,
 }
 
+impl PhysicalSize {
+    #[must_use]
+    pub fn with_width(mut self, width: f32) -> Self {
+        self.width = width;
+        self
+    }
+
+    #[must_use]
+    pub fn with_height(mut self, height: f32) -> Self {
+        self.height = height;
+        self
+    }
+}
+
+impl From<(f32, f32)> for PhysicalSize {
+    fn from(value: (f32, f32)) -> Self {
+        Self {
+            width: value.0,
+            height: value.1,
+        }
+    }
+}
+
+impl From<(u32, u32)> for PhysicalSize {
+    fn from(value: (u32, u32)) -> Self {
+        Self {
+            width: value.0 as f32,
+            height: value.1 as f32,
+        }
+    }
+}
+
 #[derive(Debug, Default, Clone, Copy)]
 pub struct PhysicalOffset {
     pub x: f32,

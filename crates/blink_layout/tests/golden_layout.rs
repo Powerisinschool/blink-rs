@@ -13,7 +13,6 @@ use blink_dom::{Dom, get_tag_name};
 use blink_html::parse_html;
 use blink_layout::engine::{LayoutContext, build_layout_tree};
 use blink_layout::fragment::{FragmentArena, LayoutFragmentId};
-use blink_layout::geom::PhysicalSize;
 use blink_layout::space::ConstraintSpace;
 use std::env;
 use std::fmt::Write;
@@ -29,9 +28,7 @@ fn layout_fixture(html: &str, css: &str) -> (Dom, FragmentArena) {
     let mut stylesheet = CSSStyleSheet::new();
     parse_css_into_stylesheet(css, &mut stylesheet);
 
-    let space = ConstraintSpace {
-        available_size: PhysicalSize::new(VIEWPORT.0, VIEWPORT.1),
-    };
+    let space = ConstraintSpace::from(VIEWPORT);
     let mut ctx = LayoutContext {
         dom: &dom,
         stylesheet: &stylesheet,

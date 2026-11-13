@@ -52,13 +52,11 @@ pub(crate) fn layout_node(
     let initial_width = node_width.unwrap_or(if is_inline_level {
         0.0
     } else {
-        space.available_size.width
+        space.get_available_width()
     });
 
-    let available_width = node_width.unwrap_or(space.available_size.width);
-    let child_space = ConstraintSpace {
-        available_size: PhysicalSize::new(available_width, space.available_size.height),
-    };
+    let available_width = node_width.unwrap_or(space.get_available_width());
+    let child_space = ConstraintSpace::new(available_width, space.get_available_height());
 
     let (first_child_id, total_child_height, max_line_width) =
         layout_flow_children(node_id, ctx, &child_space, arena);
@@ -127,7 +125,7 @@ fn layout_flow_children(
                 let run_width = flush_inline_run(
                     &mut inline_run,
                     ctx,
-                    child_space.available_size.width,
+                    child_space.get_available_width(),
                     &mut current_y_cursor,
                     arena,
                     &mut child_fragments,
@@ -154,7 +152,7 @@ fn layout_flow_children(
         let run_width = flush_inline_run(
             &mut inline_run,
             ctx,
-            child_space.available_size.width,
+            child_space.get_available_width(),
             &mut current_y_cursor,
             arena,
             &mut child_fragments,
@@ -347,6 +345,10 @@ mod tests {
     use blink_css::parse_css_into_stylesheet;
     use blink_dom::get_tag_index;
 
+    fn test_canvas_space() -> ConstraintSpace {
+        ConstraintSpace::new(800.0, 600.0)
+    }
+
     #[test]
     fn inline_element_without_explicit_width_shrink_wraps_children() {
         let mut dom = Dom::new();
@@ -368,9 +370,7 @@ mod tests {
             &mut stylesheet,
         );
 
-        let space = ConstraintSpace {
-            available_size: PhysicalSize::new(800.0, 600.0),
-        };
+        let space = test_canvas_space();
 
         let mut ctx = LayoutContext {
             dom: &dom,
@@ -424,9 +424,7 @@ mod tests {
             &mut stylesheet,
         );
 
-        let space = ConstraintSpace {
-            available_size: PhysicalSize::new(800.0, 600.0),
-        };
+        let space = test_canvas_space();
 
         let mut ctx = LayoutContext {
             dom: &dom,
