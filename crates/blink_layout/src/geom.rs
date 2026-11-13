@@ -27,6 +27,18 @@ impl std::ops::Add for PhysicalOffset {
     }
 }
 
+impl PartialEq<(f32, f32)> for PhysicalOffset {
+    fn eq(&self, other: &(f32, f32)) -> bool {
+        self.x == other.0 && self.y == other.1
+    }
+}
+
+impl PartialEq<PhysicalOffset> for (f32, f32) {
+    fn eq(&self, other: &PhysicalOffset) -> bool {
+        self.0 == other.x && self.1 == other.y
+    }
+}
+
 #[derive(Debug, Default, Clone, Copy)]
 pub struct PhysicalRect {
     pub origin: PhysicalOffset,

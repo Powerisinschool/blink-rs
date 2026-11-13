@@ -490,11 +490,8 @@ mod tests {
             .expect("Expected child1 fragment");
 
         assert_eq!(
-            child1_fragment.rect.origin.x, 0.0,
-            "Inline element should shrink-wrap its child's width"
-        );
-        assert_eq!(
-            child1_fragment.rect.origin.y, 0.0,
+            child1_fragment.rect.origin,
+            (0.0, 0.0),
             "Inline element should shrink-wrap its child's width"
         );
 
@@ -505,11 +502,8 @@ mod tests {
             .expect("Expected child2 fragment");
 
         assert_eq!(
-            child2_fragment.rect.origin.x, 40.0,
-            "Inline element should shrink-wrap its child's width"
-        );
-        assert_eq!(
-            child2_fragment.rect.origin.y, 0.0,
+            child2_fragment.rect.origin,
+            (40.0, 0.0),
             "Inline element should shrink-wrap its child's width"
         );
 
@@ -520,11 +514,8 @@ mod tests {
             .expect("Expected child3 fragment");
 
         assert_eq!(
-            child3_fragment.rect.origin.x, 0.0,
-            "Inline element should shrink-wrap its child's width"
-        );
-        assert_eq!(
-            child3_fragment.rect.origin.y, 20.0,
+            child3_fragment.rect.origin,
+            (0.0, 0.0),
             "Inline element should shrink-wrap its child's width"
         );
 

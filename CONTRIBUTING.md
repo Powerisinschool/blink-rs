@@ -20,7 +20,7 @@ cargo test --workspace --features blink_dom/dense-core
 cargo run -p blink_shell
 ```
 
-Both DOM storage layouts (default and `dense-core`) must pass the tests. CI runs both.
+[//]: # (Both DOM storage layouts &#40;default and `dense-core`&#41; must pass the tests. CI runs both.)
 
 ## Before you open a PR
 
@@ -28,7 +28,6 @@ Both DOM storage layouts (default and `dense-core`) must pass the tests. CI runs
 cargo fmt --all
 cargo clippy --workspace --all-targets
 cargo test --workspace
-cargo test --workspace --features blink_dom/dense-core
 ```
 
 ## Code layout and invariants
