@@ -1,7 +1,6 @@
 use blink_css::{CSSStyleSheet, parse_css_into_stylesheet};
 use blink_html::parse_html;
 use blink_layout::engine::build_layout_tree;
-use blink_layout::geom::PhysicalSize;
 use blink_layout::space::ConstraintSpace;
 use blink_layout::text::FontdueMeasurer;
 use blink_render::render_to_png;
@@ -40,9 +39,7 @@ fn main() {
     // println!("Parsed CSS stylesheet: {:?}", stylesheet);
 
     // Calculate layout boundaries
-    let initial_space = ConstraintSpace {
-        available_size: PhysicalSize::new(OUTPUT_WIDTH as f32, OUTPUT_HEIGHT as f32),
-    };
+    let initial_space = ConstraintSpace::from((OUTPUT_WIDTH, OUTPUT_HEIGHT));
 
     let root_id = output_dom.get_root_node_id();
 
