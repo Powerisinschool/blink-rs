@@ -5,6 +5,7 @@ use blink_layout::geom::PhysicalSize;
 use blink_layout::space::ConstraintSpace;
 use blink_layout::text::FontdueMeasurer;
 use blink_render::render_to_png;
+use blink_svg::render_to_svg;
 use std::fs;
 
 const OUTPUT_WIDTH: u32 = 800;
@@ -69,4 +70,17 @@ fn main() {
     )
     .unwrap();
     println!("Phase 1 pipeline executed successfully! Frame written to output.png");
+
+    if let Ok(svg_output) = render_to_svg(
+        &arena,
+        OUTPUT_WIDTH,
+        OUTPUT_HEIGHT,
+        "Kaushan Script",
+        font_size,
+    ) {
+        fs::write("output.svg", &svg_output).expect("Failed to write output.svg");
+        println!("Phase 2 pipeline executed successfully! Frame written to output.svg");
+    } else {
+        eprintln!("Failed to render to SVG.");
+    }
 }

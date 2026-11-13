@@ -1,0 +1,7 @@
+[package]
+name = "blink_svg"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+blink_layout = { path = "../blink_layout" }

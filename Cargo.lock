@@ -88,7 +88,15 @@ dependencies = [
  "blink_html",
  "blink_layout",
  "blink_render",
+ "blink_svg",
  "fontdue",
+]
+
+[[package]]
+name = "blink_svg"
+version = "0.1.0"
+dependencies = [
+ "blink_layout",
 ]
 
 [[package]]
