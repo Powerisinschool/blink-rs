@@ -146,7 +146,7 @@ BLESS=1 cargo test -p blink_layout --test golden_layout
 ### Phase 3: LayoutNG-style architecture
 
 - [ ] Immutable `ConstraintSpace` passed down the tree
-- [ ] Immutable physical fragment tree
+- [x] Immutable physical fragment tree
 - [ ] Margin, padding, and border (box model)
 - [ ] Incremental layout and caching driven by invalidation boundaries
 
