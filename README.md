@@ -139,9 +139,9 @@ BLESS=1 cargo test -p blink_layout --test golden_layout
 ### Phase 2: Serialization & Alternate Render Targets
 
 - [x] Create `blink_svg` crate to map layout fragments to declarative SVG `<rect>` and `<text>` elements.
-- [ ] Create `blink_figma` crate to serialize fragments into Figma's JSON schema (absolute positioning).
-- [ ] Abstract a standard `Renderer` or `Backend` trait to decouple the FragmentArena from `blink_render`.
-- [ ] Experimental: Map CSS constraints directly to Figma Auto Layout properties.
+- [ ] ~~Create `blink_figma` crate to serialize fragments into Figma's JSON schema (absolute positioning).~~
+- [x] Abstract a standard `Renderer` or `Backend` trait to decouple the FragmentArena from `blink_render`.
+- [ ] ~~Experimental: Map CSS constraints directly to Figma Auto Layout properties.~~
 
 ### Phase 3: LayoutNG-style architecture
 
