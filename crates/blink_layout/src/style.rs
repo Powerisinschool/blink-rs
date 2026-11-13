@@ -74,7 +74,7 @@ impl Display {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Default, Debug, Clone)]
 pub struct ComputedStyle {
     pub display: Display,
     pub width: Option<f32>,

@@ -12,7 +12,7 @@ use blink_css::{CSSStyleSheet, parse_css_into_stylesheet};
 use blink_dom::{Dom, get_tag_name};
 use blink_html::parse_html;
 use blink_layout::engine::{LayoutContext, build_layout_tree};
-use blink_layout::fragment::FragmentArena;
+use blink_layout::fragment::{FragmentArena, LayoutFragmentId};
 use blink_layout::geom::PhysicalSize;
 use blink_layout::space::ConstraintSpace;
 use std::env;
@@ -73,14 +73,28 @@ fn label(dom: &Dom, id: blink_dom::DomNodeId) -> String {
 
 fn dump(dom: &Dom, arena: &FragmentArena) -> String {
     let mut out = String::new();
-    if !arena.fragments.is_empty() {
-        dump_node(dom, arena, 0, 0, &mut out);
+    if let Some(root_id) = arena.get_root() {
+        dump_node(dom, arena, root_id, 0, 0.0, 0.0, &mut out);
     }
+
     out
 }
 
-fn dump_node(dom: &Dom, arena: &FragmentArena, idx: usize, depth: usize, out: &mut String) {
-    let fragment = &arena.fragments[idx];
+fn dump_node(
+    dom: &Dom,
+    arena: &FragmentArena,
+    fragment_id: LayoutFragmentId,
+    depth: usize,
+    parent_x: f32,
+    parent_y: f32,
+    out: &mut String,
+) {
+    let fragment = &arena
+        .get_fragment(fragment_id)
+        .expect("fragment index out of bounds");
+    let abs_x = parent_x + fragment.get_origin().x;
+    let abs_y = parent_y + fragment.get_origin().y;
+
     let name = fragment
         .dom_node
         .map(|id| label(dom, id))
@@ -91,18 +105,17 @@ fn dump_node(dom: &Dom, arena: &FragmentArena, idx: usize, depth: usize, out: &m
         "{}{} @ ({:.1}, {:.1}) {:.1}x{:.1}",
         "  ".repeat(depth),
         name,
-        fragment.rect.origin.x,
-        fragment.rect.origin.y,
-        fragment.rect.size.width,
-        fragment.rect.size.height,
+        abs_x,
+        abs_y,
+        fragment.get_width(),
+        fragment.get_height(),
     )
     .unwrap();
 
-    let mut child = fragment.first_child;
+    let mut child = fragment.get_first_child();
     while let Some(child_id) = child {
-        let child_idx = (child_id.get() - 1) as usize;
-        dump_node(dom, arena, child_idx, depth + 1, out);
-        child = arena.fragments[child_idx].next_sibling;
+        dump_node(dom, arena, child_id, depth + 1, abs_x, abs_y, out);
+        child = arena.get_fragment(child_id).unwrap().get_next_sibling();
     }
 }
 

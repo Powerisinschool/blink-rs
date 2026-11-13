@@ -89,8 +89,10 @@ fn break_line(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fragment::LayoutFragmentId;
+    use crate::fragment::{FragmentKind, LayoutFragment};
+    use crate::geom::PhysicalRect;
     use crate::inline::PreparedInlineItemKind;
+    use crate::style::ComputedStyle;
     use blink_dom::{Dom, DomNodeId};
 
     const LINE_HEIGHT: f32 = 16.0;
@@ -122,7 +124,12 @@ mod tests {
         PreparedInlineItem {
             kind: PreparedInlineItemKind::AtomicInline {
                 // The line breaker treats the fragment ID as opaque.
-                fragment_id: LayoutFragmentId::from_usize(0).unwrap(),
+                fragment: LayoutFragment::new(
+                    None,
+                    PhysicalRect::from_xywh(0.0, 0.0, 0.0, 0.0),
+                    ComputedStyle::default(),
+                    FragmentKind::Box,
+                ),
             },
             width,
             fit_width,
