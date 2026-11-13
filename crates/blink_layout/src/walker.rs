@@ -1,13 +1,29 @@
 use crate::fragment::{FragmentArena, LayoutFragment, LayoutFragmentId};
+use crate::geom::PhysicalOffset;
 
 pub trait Renderer {
     type Context;
 
-    fn begin_fragment(&mut self, fragment: &LayoutFragment, ctx: &Self::Context) -> Self::Context;
+    fn begin_fragment(
+        &mut self,
+        fragment: &LayoutFragment,
+        abs_origin: PhysicalOffset,
+        ctx: &Self::Context,
+    ) -> Self::Context;
 
-    fn paint_fragment(&mut self, fragment: &LayoutFragment, ctx: &Self::Context);
+    fn paint_fragment(
+        &mut self,
+        fragment: &LayoutFragment,
+        abs_origin: PhysicalOffset,
+        ctx: &Self::Context,
+    );
 
-    fn end_fragment(&mut self, fragment: &LayoutFragment, ctx: &Self::Context);
+    fn end_fragment(
+        &mut self,
+        fragment: &LayoutFragment,
+        abs_origin: PhysicalOffset,
+        ctx: &Self::Context,
+    );
 }
 
 pub struct FragmentWalker;
@@ -18,6 +34,7 @@ impl FragmentWalker {
         root_id: LayoutFragmentId,
         renderer: &mut R,
         initial_ctx: &R::Context,
+        parent_offset: PhysicalOffset,
     ) {
         let mut current_id_opt = Some(root_id);
 
@@ -26,15 +43,16 @@ impl FragmentWalker {
                 break;
             };
 
-            let child_ctx = renderer.begin_fragment(fragment, initial_ctx);
+            let abs_origin = parent_offset + fragment.rect.origin;
+            let child_ctx = renderer.begin_fragment(fragment, abs_origin, initial_ctx);
 
-            renderer.paint_fragment(fragment, &child_ctx);
+            renderer.paint_fragment(fragment, abs_origin, &child_ctx);
 
             if let Some(child_id) = fragment.first_child {
-                Self::walk(arena, child_id, renderer, &child_ctx);
+                Self::walk(arena, child_id, renderer, &child_ctx, abs_origin);
             }
 
-            renderer.end_fragment(fragment, &child_ctx);
+            renderer.end_fragment(fragment, abs_origin, &child_ctx);
 
             current_id_opt = fragment.next_sibling;
         }

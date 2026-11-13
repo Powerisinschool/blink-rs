@@ -1,4 +1,5 @@
 use blink_layout::fragment::{FragmentArena, FragmentKind, LayoutFragment, LayoutFragmentId};
+use blink_layout::geom::PhysicalOffset;
 use blink_layout::walker::{FragmentWalker, Renderer};
 
 pub struct SvgRenderer {
@@ -36,14 +37,20 @@ impl Renderer for SvgRenderer {
     fn begin_fragment(
         &mut self,
         _fragment: &LayoutFragment,
+        _abs_origin: PhysicalOffset,
         _ctx: &Self::Context,
     ) -> Self::Context {
         RenderState {}
     }
 
-    fn paint_fragment(&mut self, fragment: &LayoutFragment, _ctx: &Self::Context) {
-        let x = fragment.rect.origin.x;
-        let y = fragment.rect.origin.y;
+    fn paint_fragment(
+        &mut self,
+        fragment: &LayoutFragment,
+        abs_origin: PhysicalOffset,
+        _ctx: &Self::Context,
+    ) {
+        let x = abs_origin.x;
+        let y = abs_origin.y;
         let width = fragment.rect.size.width;
         let height = fragment.rect.size.height;
 
@@ -73,7 +80,13 @@ impl Renderer for SvgRenderer {
         }
     }
 
-    fn end_fragment(&mut self, _fragment: &LayoutFragment, _ctx: &Self::Context) {}
+    fn end_fragment(
+        &mut self,
+        _fragment: &LayoutFragment,
+        _abs_origin: PhysicalOffset,
+        _ctx: &Self::Context,
+    ) {
+    }
 }
 
 pub fn render_to_svg(
@@ -89,7 +102,13 @@ pub fn render_to_svg(
         return Err("Failed to create root fragment ID".to_string());
     };
 
-    FragmentWalker::walk(arena, root_id, &mut renderer, &RenderState {});
+    FragmentWalker::walk(
+        arena,
+        root_id,
+        &mut renderer,
+        &RenderState {},
+        PhysicalOffset::new(0.0, 0.0),
+    );
 
     Ok(renderer.finish())
 }

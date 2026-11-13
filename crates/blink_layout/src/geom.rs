@@ -11,8 +11,19 @@ pub struct PhysicalOffset {
 }
 
 impl PhysicalOffset {
-    pub(crate) fn new(x: f32, y: f32) -> PhysicalOffset {
+    pub fn new(x: f32, y: f32) -> PhysicalOffset {
         Self { x, y }
+    }
+}
+
+impl std::ops::Add for PhysicalOffset {
+    type Output = Self;
+
+    fn add(self, other: Self) -> Self {
+        Self {
+            x: self.x + other.x,
+            y: self.y + other.y,
+        }
     }
 }
 

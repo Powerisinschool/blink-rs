@@ -1,4 +1,5 @@
 use blink_layout::fragment::{FragmentArena, FragmentKind, LayoutFragment, LayoutFragmentId};
+use blink_layout::geom::PhysicalOffset;
 use blink_layout::walker::{FragmentWalker, Renderer};
 use fontdue::Font;
 use tiny_skia::{Color, ColorU8, Paint, PathBuilder, Pixmap, Rect, Stroke, Transform};
@@ -117,6 +118,7 @@ impl Renderer for CanvasRenderer {
     fn begin_fragment(
         &mut self,
         _fragment: &LayoutFragment,
+        _abs_origin: PhysicalOffset,
         _ctx: &Self::Context,
     ) -> Self::Context {
         RenderState {
@@ -125,12 +127,17 @@ impl Renderer for CanvasRenderer {
         }
     }
 
-    fn paint_fragment(&mut self, fragment: &LayoutFragment, _ctx: &Self::Context) {
+    fn paint_fragment(
+        &mut self,
+        fragment: &LayoutFragment,
+        abs_origin: PhysicalOffset,
+        _ctx: &Self::Context,
+    ) {
         match &fragment.kind {
             FragmentKind::Box => {
                 self.canvas.draw_box(
-                    fragment.rect.origin.x,
-                    fragment.rect.origin.y,
+                    abs_origin.x,
+                    abs_origin.y,
                     fragment.rect.size.width,
                     fragment.rect.size.height,
                     ColorU8::from_rgba(30, 110, 210, 255),
@@ -138,18 +145,18 @@ impl Renderer for CanvasRenderer {
             }
             FragmentKind::Line => {}
             FragmentKind::Text(text) => {
-                self.canvas.draw_text(
-                    text,
-                    fragment.rect.origin.x,
-                    fragment.rect.origin.y,
-                    &self.font,
-                    self.font_size,
-                );
+                self.canvas
+                    .draw_text(text, abs_origin.x, abs_origin.y, &self.font, self.font_size);
             }
         }
     }
 
-    fn end_fragment(&mut self, _fragment: &LayoutFragment, _ctx: &Self::Context) {
+    fn end_fragment(
+        &mut self,
+        _fragment: &LayoutFragment,
+        _abs_origin: PhysicalOffset,
+        _ctx: &Self::Context,
+    ) {
         // do nothing for now
     }
 }
@@ -171,7 +178,13 @@ pub fn render_to_png(
     let Some(root_id) = LayoutFragmentId::from_usize(0) else {
         return Err("Failed to create root fragment ID".to_string());
     };
-    FragmentWalker::walk(arena, root_id, &mut renderer, &RenderState {});
+    FragmentWalker::walk(
+        arena,
+        root_id,
+        &mut renderer,
+        &RenderState {},
+        PhysicalOffset::new(0.0, 0.0),
+    );
 
     renderer.canvas.export_png(output_path)
 }

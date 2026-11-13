@@ -22,28 +22,9 @@ pub fn build_layout_tree(
 ) -> FragmentArena {
     let mut arena = FragmentArena::new();
 
-    if let Some(root_fragment_id) = walk_node(root_id, ctx, initial_space, &mut arena) {
-        let root_idx = (root_fragment_id.get() - 1) as usize;
-        // Transform the relative coordinates into absolute screen coordinates for the renderer
-        make_absolute(&mut arena, root_idx, 0.0, 0.0);
-    }
+    walk_node(root_id, ctx, initial_space, &mut arena);
 
     arena
-}
-
-fn make_absolute(arena: &mut FragmentArena, node_idx: usize, parent_x: f32, parent_y: f32) {
-    let abs_x = parent_x + arena.fragments[node_idx].rect.origin.x;
-    let abs_y = parent_y + arena.fragments[node_idx].rect.origin.y;
-
-    arena.fragments[node_idx].rect.origin.x = abs_x;
-    arena.fragments[node_idx].rect.origin.y = abs_y;
-
-    let mut current_child = arena.fragments[node_idx].first_child;
-    while let Some(child_id) = current_child {
-        let child_idx = (child_id.get() - 1) as usize;
-        make_absolute(arena, child_idx, abs_x, abs_y);
-        current_child = arena.fragments[child_idx].next_sibling;
-    }
 }
 
 pub(crate) fn walk_node(
