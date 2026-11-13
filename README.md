@@ -62,8 +62,11 @@ An experimental web rendering engine in Rust, focused on the **DOM → style →
 
 - Layout is a recursive pass over the DOM. For each node it computes style, prunes `display: none`, resolves size from the parent's `ConstraintSpace`, lays out children, then resolves any auto height.
 - Block children stack vertically. Inline children flow left to right on a line whose height is the tallest child. Auto-width blocks take the available width; auto-width inline boxes shrink-wrap their content.
-- Output is a `FragmentArena`: a flat `Vec<LayoutFragment>` with `first_child`/`next_sibling` links, mirroring the DOM's topology. Fragments are built parent-relative and then converted to absolute coordinates in a final pass.
-- Fragments are **not yet immutable**. They are patched while the layout runs. Making them immutable is a Phase 2 goal.
+- Output is a `FragmentArena`: a flat `Vec<LayoutFragment>` with `first_child`/`next_sibling` links, mirroring the DOM's
+  topology. The arena stores fragments and their structural relationships.
+- Fragments are constructed with parent-relative coordinates. Absolute coordinates are resolved during fragment
+  traversal, not by modifying the layout tree.
+- Fragment geometry and tree relationships are immutable after construction.
 - Unsupported `display` declarations are ignored.
 - Unknown tag names are registered dynamically, but generic tag-name lookup currently falls back to `div`.
 
@@ -145,7 +148,7 @@ BLESS=1 cargo test -p blink_layout --test golden_layout
 
 ### Phase 3: LayoutNG-style architecture
 
-- [ ] Immutable `ConstraintSpace` passed down the tree
+- [x] Immutable `ConstraintSpace` passed down the tree
 - [x] Immutable physical fragment tree
 - [ ] Margin, padding, and border (box model)
 - [ ] Incremental layout and caching driven by invalidation boundaries

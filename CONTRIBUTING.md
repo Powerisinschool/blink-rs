@@ -15,7 +15,6 @@ git clone https://github.com/Powerisinschool/blink-rs.git
 cd blink-rs # or whatever you name it
 cargo build --workspace
 cargo test --workspace
-cargo test --workspace --features blink_dom/dense-core
 # Writes output.png from assets/test.html + test.css
 cargo run -p blink_shell
 ```
