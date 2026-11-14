@@ -1,158 +1,8 @@
 use blink_css::{CSSStyleRule, CSSStyleSheet, Selector};
-use blink_dom::{Dom, DomNodeId, get_tag_name};
+use blink_dom::{Dom, DomNodeId};
 use markup5ever::local_name;
 
-// https://drafts.csswg.org/css-display/#the-display-properties
-// https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Properties/display
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DisplayOutside {
-    Block,
-    Inline,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DisplayInside {
-    Flow,
-    FlowRoot,
-    Table,
-    Flex,
-    Grid,
-    GridLanes,
-    Ruby,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Display {
-    None,
-    Box {
-        outside: DisplayOutside,
-        inside: DisplayInside,
-        list_item: bool,
-    },
-}
-
-impl Default for Display {
-    fn default() -> Self {
-        Display::INLINE
-    }
-}
-
-impl Display {
-    pub const BLOCK: Self = Display::Box {
-        outside: DisplayOutside::Block,
-        inside: DisplayInside::Flow,
-        list_item: false,
-    };
-    pub const INLINE: Self = Display::Box {
-        outside: DisplayOutside::Inline,
-        inside: DisplayInside::Flow,
-        list_item: false,
-    };
-    pub const INLINE_BLOCK: Self = Display::Box {
-        outside: DisplayOutside::Inline,
-        inside: DisplayInside::FlowRoot,
-        list_item: false,
-    };
-
-    pub fn outside(self) -> Option<DisplayOutside> {
-        match self {
-            Display::Box { outside, .. } => Some(outside),
-            _ => None,
-        }
-    }
-
-    pub fn inside(self) -> Option<DisplayInside> {
-        match self {
-            Display::Box { inside, .. } => Some(inside),
-            _ => None,
-        }
-    }
-
-    pub fn is_none(self) -> bool {
-        self == Display::None
-    }
-}
-
-#[derive(Debug, Default, Clone, Copy, PartialEq)]
-pub struct Color {
-    pub r: u8,
-    pub g: u8,
-    pub b: u8,
-    pub a: u8,
-}
-
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-pub enum BorderStyle {
-    #[default]
-    None,
-    Solid,
-}
-
-#[derive(Debug, Default, Clone, Copy, PartialEq)]
-pub struct BorderSide {
-    pub color: Option<Color>,
-    pub width: f32,
-    pub style: BorderStyle,
-}
-
-#[derive(Debug, Default, Clone, Copy, PartialEq)]
-pub struct EdgeSizes<T = f32> {
-    pub top: T,
-    pub right: T,
-    pub bottom: T,
-    pub left: T,
-}
-
-impl EdgeSizes<f32> {
-    pub fn horizontal(self) -> f32 {
-        self.left + self.right
-    }
-
-    pub fn vertical(self) -> f32 {
-        self.top + self.bottom
-    }
-}
-
-impl EdgeSizes<BorderSide> {
-    pub fn widths(self) -> EdgeSizes<f32> {
-        EdgeSizes {
-            top: self.top.width,
-            right: self.right.width,
-            bottom: self.bottom.width,
-            left: self.left.width,
-        }
-    }
-}
-
-#[derive(Default, Debug, Clone)]
-pub struct ComputedStyle {
-    pub display: Display,
-    pub width: Option<f32>,
-    pub height: Option<f32>,
-    pub margin: EdgeSizes,
-    pub padding: EdgeSizes,
-    pub border: EdgeSizes<BorderSide>,
-}
-
-impl ComputedStyle {
-    pub fn new(display: Display, width: Option<f32>, height: Option<f32>) -> Self {
-        ComputedStyle {
-            display,
-            width,
-            height,
-            ..Default::default()
-        }
-    }
-}
-
-pub fn compute_style(node_id: DomNodeId, dom: &Dom, stylesheet: &CSSStyleSheet) -> ComputedStyle {
-    let mut rules = get_matching_rules(node_id, dom, stylesheet);
-
-    cascade_properties(&mut rules, default_display(node_id, dom))
-}
-
-fn get_matching_rules<'a>(
+pub(super) fn get_matching_rules<'a>(
     node_id: DomNodeId,
     dom: &Dom,
     stylesheet: &'a CSSStyleSheet,
@@ -252,81 +102,17 @@ fn match_compound(node_id: DomNodeId, dom: &Dom, parts: &[Selector]) -> bool {
     true
 }
 
-fn default_display(node_id: DomNodeId, dom: &Dom) -> Display {
-    if let Some(node) = dom.get_node(node_id)
-        && let Some(tag) = node.get_tag()
-    {
-        match get_tag_name(tag) {
-            "head" | "script" | "style" | "title" | "meta" | "link" => Display::None,
-            "document" | "html" | "body" | "div" | "p" | "section" | "ul" | "li" => Display::BLOCK,
-            _ => Display::INLINE,
-        }
-    } else {
-        Display::INLINE
-    }
-}
-
-fn parse_display(value: &str) -> Option<Display> {
-    match value.trim() {
-        "none" => Some(Display::None),
-        "block" => Some(Display::BLOCK),
-        "inline" => Some(Display::INLINE),
-        "inline-block" => Some(Display::INLINE_BLOCK),
-        _ => None,
-    }
-}
-
-fn cascade_properties(
-    matched_rules: &mut Vec<&CSSStyleRule>,
-    mut display: Display,
-) -> ComputedStyle {
-    matched_rules.sort_by_key(|a| a.specificity());
-
-    let mut width = None;
-    let mut height = None;
-
-    for rule in matched_rules {
-        if let Some(d) = rule
-            .properties
-            .get("display")
-            .and_then(|v| parse_display(v))
-        {
-            display = d;
-        }
-
-        if let Some(w) = rule.properties.get("width") {
-            width = parse_px_value(w);
-        }
-
-        if let Some(h) = rule.properties.get("height") {
-            height = parse_px_value(h);
-        }
-    }
-
-    ComputedStyle::new(display, width, height)
-}
-
-fn parse_px_value(mut val: &str) -> Option<f32> {
-    val = val.trim();
-    if val.ends_with("px") {
-        let num_str = val.trim_end_matches("px").trim();
-        num_str.parse::<f32>().ok()
-    } else {
-        val.parse::<f32>().ok()
-    }
-}
-
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use super::*;
     use blink_css::parse_css_into_stylesheet;
     use blink_dom::get_tag_index;
     use markup5ever::{Attribute, LocalName, QualName, ns};
 
-    const DIV_TAG_INDEX: u8 = 29;
+    pub(crate) const DIV_TAG_INDEX: u8 = 29;
     const P_TAG_INDEX: u8 = 73;
 
-    fn make_attr(name: &str, value: &str) -> Attribute {
+    pub(crate) fn make_attr(name: &str, value: &str) -> Attribute {
         Attribute {
             name: QualName::new(None, ns!(), LocalName::from(name)),
             value: value.into(),
@@ -456,77 +242,6 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_px_value_edge_cases() {
-        assert_eq!(parse_px_value("100px"), Some(100.0));
-        assert_eq!(parse_px_value("50.5px"), Some(50.5));
-
-        assert_eq!(parse_px_value("  200  px  "), Some(200.0));
-        assert_eq!(parse_px_value(" 300 "), Some(300.0));
-
-        // Unhandled units and keywords should safely fall back to None (auto)
-        assert_eq!(parse_px_value("auto"), None);
-        assert_eq!(parse_px_value("100vw"), None);
-        assert_eq!(parse_px_value("inherit"), None);
-    }
-
-    #[test]
-    fn test_compute_style() {
-        let mut dom = Dom::new();
-
-        dom.ensure_tag_registered(DIV_TAG_INDEX);
-
-        let div_attrs = vec![make_attr("id", "main")].into_boxed_slice();
-        let div_node = dom.add_element(DIV_TAG_INDEX, Some(div_attrs));
-
-        let mut stylesheet = CSSStyleSheet::new();
-        parse_css_into_stylesheet("div { width: 100px; height: 100px; }", &mut stylesheet);
-
-        let computed_style = compute_style(div_node, &dom, &stylesheet);
-        assert_eq!(computed_style.width, Some(100.0));
-        assert_eq!(computed_style.height, Some(100.0));
-    }
-
-    #[test]
-    fn test_compute_style_cascade_overrides() {
-        let mut dom = Dom::new();
-        dom.ensure_tag_registered(DIV_TAG_INDEX);
-
-        // Build Node: <div id="hero" class="banner">
-        let attrs = vec![make_attr("id", "hero"), make_attr("class", "banner")].into_boxed_slice();
-
-        let div_node = dom.add_element(DIV_TAG_INDEX, Some(attrs));
-
-        // Create conflicting rules with varying specificities
-        let mut stylesheet = CSSStyleSheet::new();
-        let css = "
-            div { width: 100px; height: 50px; display: inline; }
-            .banner { width: 200px; display: block; }
-            div#hero { width: 300px; }
-        ";
-        parse_css_into_stylesheet(css, &mut stylesheet);
-
-        let computed = compute_style(div_node, &dom, &stylesheet);
-
-        assert_eq!(
-            computed.height,
-            Some(50.0),
-            "Height should be inherited from the base tag rule"
-        );
-
-        assert_eq!(
-            computed.display,
-            Display::BLOCK,
-            "Class rule should override Tag rule for display"
-        );
-
-        assert_eq!(
-            computed.width,
-            Some(300.0),
-            "ID rule should have highest specificity and win the width cascade"
-        );
-    }
-
-    #[test]
     fn test_attributes_survive_text_nodes() {
         let mut dom = Dom::new();
         let div = get_tag_index("div");
@@ -554,14 +269,5 @@ mod tests {
                 .iter()
                 .any(|a| a.value.as_ref() == "x")
         );
-    }
-
-    #[test]
-    fn test_parse_display() {
-        assert_eq!(parse_display("none"), Some(Display::None));
-        assert_eq!(parse_display("block"), Some(Display::BLOCK));
-        assert_eq!(parse_display("inline"), Some(Display::INLINE));
-        assert_eq!(parse_display("inline-block"), Some(Display::INLINE_BLOCK));
-        assert_eq!(parse_display("unknown"), None);
     }
 }
