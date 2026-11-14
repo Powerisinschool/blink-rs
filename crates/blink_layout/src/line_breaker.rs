@@ -127,7 +127,7 @@ mod tests {
                 fragment: LayoutFragment::new(
                     None,
                     PhysicalRect::from_xywh(0.0, 0.0, 0.0, 0.0),
-                    ComputedStyle::default(),
+                    Some(ComputedStyle::default()),
                     FragmentKind::Box,
                 ),
             },

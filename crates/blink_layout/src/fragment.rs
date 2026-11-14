@@ -15,8 +15,8 @@ pub enum FragmentKind {
 
 pub struct LayoutFragment {
     pub dom_node: Option<DomNodeId>,
+    pub style: Option<ComputedStyle>,
     rect: PhysicalRect,
-    pub style: ComputedStyle,
     pub kind: FragmentKind,
 
     first_child: Option<LayoutFragmentId>,
@@ -27,7 +27,7 @@ impl LayoutFragment {
     pub fn new(
         dom_node: Option<DomNodeId>,
         rect: PhysicalRect,
-        style: ComputedStyle,
+        style: Option<ComputedStyle>,
         kind: FragmentKind,
     ) -> Self {
         Self {

@@ -4,7 +4,7 @@ use crate::geom::{PhysicalOffset, PhysicalRect, PhysicalSize};
 use crate::inline::{InlineItem, PreparedInlineItem, PreparedInlineItemKind, collect_inline_items};
 use crate::line_breaker::{Line, break_lines};
 use crate::space::ConstraintSpace;
-use crate::style::{ComputedStyle, Display, DisplayOutside, compute_style};
+use crate::style::{DisplayOutside, compute_style};
 use crate::text::TextMeasurer;
 use blink_css::CSSStyleSheet;
 use blink_dom::{Dom, DomNodeId};
@@ -78,7 +78,7 @@ pub(crate) fn layout_node(
         LayoutFragment::new(
             Some(node_id),
             bounding_rect,
-            computed_style,
+            Some(computed_style),
             FragmentKind::Box,
         )
         .with_first_child(first_child_id),
@@ -280,7 +280,7 @@ fn build_line_fragments(
                     let fragment = LayoutFragment::new(
                         Some(dom_node),
                         text_rect,
-                        text_style,
+                        Some(text_style),
                         FragmentKind::Text(text.clone()),
                     )
                     .with_next_sibling(next_child_id);
@@ -306,8 +306,7 @@ fn build_line_fragments(
             PhysicalOffset::new(0.0, *current_y_cursor),
             PhysicalSize::new(line.width, line.height),
         );
-        let line_style = ComputedStyle::new(Display::BLOCK, Some(line.width), Some(line.height));
-        let line_fragment = LayoutFragment::new(None, line_rect, line_style, FragmentKind::Line)
+        let line_fragment = LayoutFragment::new(None, line_rect, None, FragmentKind::Line)
             .with_first_child(next_child_id);
 
         child_fragments.push(line_fragment);
