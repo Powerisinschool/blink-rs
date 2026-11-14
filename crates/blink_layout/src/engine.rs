@@ -439,7 +439,7 @@ mod tests {
 
         assert_eq!(
             *child1_fragment.get_origin(),
-            (0.0, 0.0),
+            PhysicalOffset::new(0.0, 0.0),
             "Inline element should shrink-wrap its child's width"
         );
 
@@ -449,7 +449,7 @@ mod tests {
 
         assert_eq!(
             *child2_fragment.get_origin(),
-            (40.0, 0.0),
+            PhysicalOffset::new(40.0, 0.0),
             "Inline element should shrink-wrap its child's width"
         );
 
@@ -459,7 +459,7 @@ mod tests {
 
         assert_eq!(
             *child3_fragment.get_origin(),
-            (0.0, 0.0),
+            PhysicalOffset::new(0.0, 0.0),
             "Inline element should shrink-wrap its child's width"
         );
 
