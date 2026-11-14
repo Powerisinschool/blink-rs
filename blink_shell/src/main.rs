@@ -1,7 +1,6 @@
 use blink_css::{CSSStyleSheet, parse_css_into_stylesheet};
 use blink_html::parse_html;
-use blink_layout::space::ConstraintSpace;
-use blink_layout::text::FontdueMeasurer;
+use blink_layout::layout::{ConstraintSpace, FontdueMeasurer, LayoutContext};
 use blink_render::render_to_png;
 use blink_svg::render_to_svg;
 use std::fs;
@@ -42,7 +41,7 @@ fn main() {
 
     let root_id = output_dom.get_root_node_id();
 
-    let mut ctx = blink_layout::engine::LayoutContext {
+    let mut ctx = LayoutContext {
         dom: &output_dom,
         stylesheet: &stylesheet,
         text_measurer: &FontdueMeasurer {

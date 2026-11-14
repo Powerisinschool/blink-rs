@@ -1,4 +1,4 @@
-use crate::fragment::{FragmentArena, LayoutFragment, LayoutFragmentId};
+use super::layout::fragment::{FragmentArena, LayoutFragment, LayoutFragmentId};
 use crate::geom::PhysicalOffset;
 
 pub trait Renderer {

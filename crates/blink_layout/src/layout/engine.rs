@@ -1,11 +1,9 @@
-use crate::atomic_inline::layout_atomic_inline;
-use crate::fragment::{FragmentArena, FragmentKind, LayoutFragment, LayoutFragmentId};
+use super::fragment::{FragmentArena, FragmentKind, LayoutFragment, LayoutFragmentId};
+use super::inline::layout_inline_run;
+use super::space::ConstraintSpace;
+use super::text::TextMeasurer;
 use crate::geom::{PhysicalOffset, PhysicalRect, PhysicalSize};
-use crate::inline::{InlineItem, PreparedInlineItem, PreparedInlineItemKind, collect_inline_items};
-use crate::line_breaker::{Line, break_lines};
-use crate::space::ConstraintSpace;
 use crate::style::{DisplayOutside, compute_style};
-use crate::text::TextMeasurer;
 use blink_css::CSSStyleSheet;
 use blink_dom::{Dom, DomNodeId};
 
@@ -128,10 +126,11 @@ impl<'a, M: TextMeasurer + ?Sized> LayoutContext<'a, M> {
                 inline_run.push(dom_child);
             } else {
                 if !inline_run.is_empty() {
-                    let run_width = self.flush_inline_run(
+                    let run_width = layout_inline_run(
                         &mut inline_run,
                         child_space.available_width(),
                         &mut current_y_cursor,
+                        self,
                         arena,
                         &mut child_fragments,
                     );
@@ -154,10 +153,11 @@ impl<'a, M: TextMeasurer + ?Sized> LayoutContext<'a, M> {
         }
 
         if !inline_run.is_empty() {
-            let run_width = self.flush_inline_run(
+            let run_width = layout_inline_run(
                 &mut inline_run,
                 child_space.available_width(),
                 &mut current_y_cursor,
+                self,
                 arena,
                 &mut child_fragments,
             );
@@ -173,180 +173,12 @@ impl<'a, M: TextMeasurer + ?Sized> LayoutContext<'a, M> {
 
         (first_child_fragment_id, current_y_cursor, max_line_width)
     }
-
-    fn prepare_inline_items(
-        &mut self,
-        items: Vec<InlineItem>,
-        max_width: f32,
-        arena: &mut FragmentArena,
-    ) -> Vec<PreparedInlineItem> {
-        let mut prepared_items: Vec<PreparedInlineItem> = Vec::new();
-        let space_width = self.text_measurer.measure(" ");
-
-        for item in items {
-            if let Some(text) = item.get_text() {
-                let mut current_text = String::new();
-
-                for c in text.chars() {
-                    match c {
-                        ' ' => {
-                            let fit_width = self.text_measurer.measure(&current_text);
-                            if current_text.is_empty() {
-                                if let Some(last) = prepared_items.last_mut()
-                                    && !last.is_forced_break()
-                                    && last.width == last.fit_width
-                                {
-                                    last.width += space_width;
-                                }
-                            } else {
-                                let word = std::mem::take(&mut current_text);
-                                prepared_items.push(PreparedInlineItem {
-                                    kind: PreparedInlineItemKind::TextSegment {
-                                        dom_node: item.dom_node,
-                                        text: word,
-                                    },
-                                    width: fit_width + space_width,
-                                    fit_width,
-                                    height: self.text_measurer.line_height(),
-                                });
-                                current_text.clear();
-                            }
-                        }
-                        _ => current_text.push(c),
-                    }
-                }
-                if !current_text.is_empty() {
-                    let width = self.text_measurer.measure(&current_text);
-                    prepared_items.push(PreparedInlineItem {
-                        kind: PreparedInlineItemKind::TextSegment {
-                            dom_node: item.dom_node,
-                            text: current_text.clone(),
-                        },
-                        width,
-                        fit_width: width,
-                        height: self.text_measurer.line_height(),
-                    });
-                }
-            } else if item.is_forced_break() {
-                prepared_items.push(PreparedInlineItem {
-                    kind: PreparedInlineItemKind::ForcedBreak,
-                    width: 0.0,
-                    fit_width: 0.0,
-                    height: 0.0,
-                });
-            } else if item.is_atomic_inline()
-                && let Some(fragment) = layout_atomic_inline(item.dom_node, max_width, self, arena)
-            {
-                prepared_items.push(PreparedInlineItem {
-                    width: fragment.width(),
-                    fit_width: fragment.width(),
-                    height: fragment.height(),
-                    kind: PreparedInlineItemKind::AtomicInline { fragment },
-                });
-            }
-        }
-
-        prepared_items
-    }
-
-    fn build_line_fragments(
-        &mut self,
-        lines: Vec<Line>,
-        current_y_cursor: &mut f32,
-        arena: &mut FragmentArena,
-        child_fragments: &mut Vec<LayoutFragment>,
-    ) -> f32 {
-        let mut run_max_width: f32 = 0.0;
-
-        for line in lines {
-            run_max_width = run_max_width.max(line.width);
-
-            let mut line_x = 0.0;
-            let mut positioned_items = Vec::with_capacity(line.items.len());
-
-            for item in line.items {
-                let width = item.width;
-                positioned_items.push((line_x, item));
-                line_x += width;
-            }
-
-            let mut next_child_id: Option<LayoutFragmentId> = None;
-            // we're iterating in reverse order to avoid mutating the fragment to insert the
-            // next_sibling link after it's already been set by a previous iteration
-            for (x, item) in positioned_items.into_iter().rev() {
-                match item.kind {
-                    PreparedInlineItemKind::TextSegment { dom_node, text } => {
-                        let text_rect = PhysicalRect::new(
-                            PhysicalOffset::new(x, 0.0),
-                            PhysicalSize::new(item.fit_width, item.height),
-                        );
-                        let text_style = compute_style(dom_node, self.dom, self.stylesheet);
-                        let fragment = LayoutFragment::new(
-                            Some(dom_node),
-                            text_rect,
-                            Some(text_style),
-                            FragmentKind::Text(text.clone()),
-                        )
-                        .with_next_sibling(next_child_id);
-
-                        next_child_id = Some(arena.add_fragment(fragment));
-                    }
-                    PreparedInlineItemKind::AtomicInline { fragment } => {
-                        let new_origin = fragment.origin().with_x(x);
-                        next_child_id = Some(
-                            arena.add_fragment(
-                                fragment
-                                    .with_origin(new_origin)
-                                    .with_next_sibling(next_child_id),
-                            ),
-                        );
-                    }
-                    PreparedInlineItemKind::ForcedBreak => {}
-                }
-            }
-            // at the end, next_child_id is the first child of the line fragment
-
-            let line_rect = PhysicalRect::new(
-                PhysicalOffset::new(0.0, *current_y_cursor),
-                PhysicalSize::new(line.width, line.height),
-            );
-            let line_fragment = LayoutFragment::new(None, line_rect, None, FragmentKind::Line)
-                .with_first_child(next_child_id);
-
-            child_fragments.push(line_fragment);
-
-            *current_y_cursor += line.height;
-        }
-
-        run_max_width
-    }
-
-    fn flush_inline_run(
-        &mut self,
-        inline_run: &mut Vec<DomNodeId>,
-        max_width: f32,
-        current_y_cursor: &mut f32,
-        arena: &mut FragmentArena,
-        child_fragments: &mut Vec<LayoutFragment>,
-    ) -> f32 {
-        let items = collect_inline_items(inline_run, self);
-        let prepared_items = self.prepare_inline_items(items, max_width, arena);
-
-        let min_line_height = self.text_measurer.line_height();
-        let lines = break_lines(prepared_items, max_width, min_line_height);
-
-        let run_max_width =
-            self.build_line_fragments(lines, current_y_cursor, arena, child_fragments);
-        inline_run.clear();
-
-        run_max_width
-    }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::super::text::FixedWidth;
     use super::*;
-    use crate::text::FixedWidth;
     use blink_css::parse_css_into_stylesheet;
     use blink_dom::get_tag_index;
 

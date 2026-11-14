@@ -1,5 +1,5 @@
-use crate::fragment::LayoutFragment;
-use crate::inline::PreparedInlineItem;
+use super::super::fragment::LayoutFragment;
+use super::collect::PreparedInlineItem;
 
 pub struct Line<T = LayoutFragment> {
     pub items: Vec<PreparedInlineItem<T>>,
@@ -89,8 +89,8 @@ fn break_line<T>(
 
 #[cfg(test)]
 mod tests {
+    use super::super::collect::PreparedInlineItemKind;
     use super::*;
-    use crate::inline::PreparedInlineItemKind;
     use blink_dom::{Dom, DomNodeId};
 
     type TestItem = PreparedInlineItem<()>;

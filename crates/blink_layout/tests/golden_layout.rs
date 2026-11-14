@@ -11,9 +11,9 @@
 use blink_css::{CSSStyleSheet, parse_css_into_stylesheet};
 use blink_dom::{Dom, get_tag_name};
 use blink_html::parse_html;
-use blink_layout::engine::LayoutContext;
-use blink_layout::fragment::{FragmentArena, LayoutFragmentId};
-use blink_layout::space::ConstraintSpace;
+use blink_layout::layout::ConstraintSpace;
+use blink_layout::layout::LayoutContext;
+use blink_layout::layout::{FragmentArena, LayoutFragmentId};
 use std::env;
 use std::fmt::Write;
 use std::fs;
@@ -32,7 +32,7 @@ fn layout_fixture(html: &str, css: &str) -> (Dom, FragmentArena) {
     let mut ctx = LayoutContext {
         dom: &dom,
         stylesheet: &stylesheet,
-        text_measurer: &blink_layout::text::FixedWidth {},
+        text_measurer: &blink_layout::layout::FixedWidth {},
     };
 
     let arena = ctx.build_layout_tree(dom.get_root_node_id(), space);

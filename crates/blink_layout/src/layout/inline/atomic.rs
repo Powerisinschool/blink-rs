@@ -1,7 +1,7 @@
-use crate::engine::LayoutContext;
-use crate::fragment::{FragmentArena, LayoutFragment};
-use crate::space::ConstraintSpace;
-use crate::text::TextMeasurer;
+use super::super::engine::LayoutContext;
+use super::super::fragment::{FragmentArena, LayoutFragment};
+use super::super::space::ConstraintSpace;
+use super::super::text::TextMeasurer;
 use blink_dom::DomNodeId;
 
 pub fn layout_atomic_inline<M: TextMeasurer + ?Sized>(

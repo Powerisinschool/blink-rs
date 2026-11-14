@@ -1,5 +1,5 @@
-use blink_layout::fragment::{FragmentArena, FragmentKind, LayoutFragment};
 use blink_layout::geom::PhysicalOffset;
+use blink_layout::layout::{FragmentArena, FragmentKind, LayoutFragment};
 use blink_layout::walker::{FragmentWalker, Renderer};
 use fontdue::Font;
 use tiny_skia::{Color, ColorU8, Paint, PathBuilder, Pixmap, Rect, Stroke, Transform};

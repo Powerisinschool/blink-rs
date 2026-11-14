@@ -1,7 +1,7 @@
-use crate::engine::LayoutContext;
-use crate::fragment::LayoutFragment;
+use super::super::engine::LayoutContext;
+use super::super::fragment::LayoutFragment;
+use super::super::text::TextMeasurer;
 use crate::style::{DisplayInside, DisplayOutside, compute_style};
-use crate::text::TextMeasurer;
 use blink_dom::DomNodeId;
 
 #[derive(Debug, PartialEq, Clone)]
@@ -18,9 +18,9 @@ pub struct InlineItem {
 }
 
 impl InlineItem {
-    pub fn is_text(&self) -> bool {
-        matches!(self.kind, InlineItemKind::Text(_))
-    }
+    // pub fn is_text(&self) -> bool {
+    //     matches!(self.kind, InlineItemKind::Text(_))
+    // }
 
     pub fn is_atomic_inline(&self) -> bool {
         matches!(self.kind, InlineItemKind::AtomicInline)
@@ -46,11 +46,11 @@ impl InlineItem {
         }
     }
 
-    pub fn append_text(&mut self, additional_text: &str) {
-        if let InlineItemKind::Text(ref mut text) = self.kind {
-            text.push_str(additional_text);
-        }
-    }
+    // pub fn append_text(&mut self, additional_text: &str) {
+    //     if let InlineItemKind::Text(ref mut text) = self.kind {
+    //         text.push_str(additional_text);
+    //     }
+    // }
 }
 
 pub enum PreparedInlineItemKind<T = LayoutFragment> {
@@ -73,33 +73,33 @@ pub struct PreparedInlineItem<T = LayoutFragment> {
 }
 
 impl<T> PreparedInlineItem<T> {
-    pub fn is_atomic_inline(&self) -> bool {
-        matches!(self.kind, PreparedInlineItemKind::AtomicInline { .. })
-    }
+    // pub fn is_atomic_inline(&self) -> bool {
+    //     matches!(self.kind, PreparedInlineItemKind::AtomicInline { .. })
+    // }
 
     pub fn is_forced_break(&self) -> bool {
         matches!(self.kind, PreparedInlineItemKind::ForcedBreak)
     }
 
-    pub fn is_text_segment(&self) -> bool {
-        matches!(self.kind, PreparedInlineItemKind::TextSegment { .. })
-    }
+    // pub fn is_text_segment(&self) -> bool {
+    //     matches!(self.kind, PreparedInlineItemKind::TextSegment { .. })
+    // }
 
-    pub fn get_text_segment(&self) -> Option<(&DomNodeId, &String)> {
-        if let PreparedInlineItemKind::TextSegment { dom_node, text } = &self.kind {
-            Some((dom_node, text))
-        } else {
-            None
-        }
-    }
+    // pub fn get_text_segment(&self) -> Option<(&DomNodeId, &String)> {
+    //     if let PreparedInlineItemKind::TextSegment { dom_node, text } = &self.kind {
+    //         Some((dom_node, text))
+    //     } else {
+    //         None
+    //     }
+    // }
 
-    pub fn get_atomic_inline_fragment(&self) -> Option<&T> {
-        if let PreparedInlineItemKind::AtomicInline { fragment } = &self.kind {
-            Some(fragment)
-        } else {
-            None
-        }
-    }
+    // pub fn get_atomic_inline_fragment(&self) -> Option<&T> {
+    //     if let PreparedInlineItemKind::AtomicInline { fragment } = &self.kind {
+    //         Some(fragment)
+    //     } else {
+    //         None
+    //     }
+    // }
 }
 
 pub fn collect_inline_items<M: TextMeasurer + ?Sized>(
@@ -227,8 +227,8 @@ pub fn strip_trailing_space(items: &mut Vec<InlineItem>) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use super::super::super::text::FixedWidth;
     use super::*;
-    use crate::text::FixedWidth;
     use blink_css::CSSStyleSheet;
     use blink_dom::{Dom, get_tag_index};
 
