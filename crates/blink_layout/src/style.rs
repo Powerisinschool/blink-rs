@@ -74,11 +74,65 @@ impl Display {
     }
 }
 
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
+pub struct Color {
+    pub r: u8,
+    pub g: u8,
+    pub b: u8,
+    pub a: u8,
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum BorderStyle {
+    #[default]
+    None,
+    Solid,
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
+pub struct BorderSide {
+    pub color: Option<Color>,
+    pub width: f32,
+    pub style: BorderStyle,
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
+pub struct EdgeSizes<T = f32> {
+    pub top: T,
+    pub right: T,
+    pub bottom: T,
+    pub left: T,
+}
+
+impl EdgeSizes<f32> {
+    pub fn horizontal(self) -> f32 {
+        self.left + self.right
+    }
+
+    pub fn vertical(self) -> f32 {
+        self.top + self.bottom
+    }
+}
+
+impl EdgeSizes<BorderSide> {
+    pub fn widths(self) -> EdgeSizes<f32> {
+        EdgeSizes {
+            top: self.top.width,
+            right: self.right.width,
+            bottom: self.bottom.width,
+            left: self.left.width,
+        }
+    }
+}
+
 #[derive(Default, Debug, Clone)]
 pub struct ComputedStyle {
     pub display: Display,
     pub width: Option<f32>,
     pub height: Option<f32>,
+    pub margin: EdgeSizes,
+    pub padding: EdgeSizes,
+    pub border: EdgeSizes<BorderSide>,
 }
 
 impl ComputedStyle {
@@ -87,6 +141,7 @@ impl ComputedStyle {
             display,
             width,
             height,
+            ..Default::default()
         }
     }
 }
