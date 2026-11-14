@@ -53,26 +53,26 @@ impl InlineItem {
     }
 }
 
-pub enum PreparedInlineItemKind {
+pub enum PreparedInlineItemKind<T = LayoutFragment> {
     TextSegment {
         dom_node: DomNodeId,
         text: String,
         // range: Range<usize>,
     },
     AtomicInline {
-        fragment: LayoutFragment,
+        fragment: T,
     },
     ForcedBreak,
 }
 
-pub struct PreparedInlineItem {
-    pub kind: PreparedInlineItemKind,
+pub struct PreparedInlineItem<T = LayoutFragment> {
+    pub kind: PreparedInlineItemKind<T>,
     pub width: f32,
     pub fit_width: f32,
     pub height: f32,
 }
 
-impl PreparedInlineItem {
+impl<T> PreparedInlineItem<T> {
     pub fn is_atomic_inline(&self) -> bool {
         matches!(self.kind, PreparedInlineItemKind::AtomicInline { .. })
     }
@@ -93,7 +93,7 @@ impl PreparedInlineItem {
         }
     }
 
-    pub fn get_atomic_inline_fragment(&self) -> Option<&LayoutFragment> {
+    pub fn get_atomic_inline_fragment(&self) -> Option<&T> {
         if let PreparedInlineItemKind::AtomicInline { fragment } = &self.kind {
             Some(fragment)
         } else {

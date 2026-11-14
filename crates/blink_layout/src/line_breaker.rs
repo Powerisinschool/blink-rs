@@ -1,13 +1,14 @@
+use crate::fragment::LayoutFragment;
 use crate::inline::PreparedInlineItem;
 
-pub struct Line {
-    pub items: Vec<PreparedInlineItem>,
+pub struct Line<T = LayoutFragment> {
+    pub items: Vec<PreparedInlineItem<T>>,
     pub width: f32,
     pub height: f32,
 }
 
-impl Line {
-    pub fn new(items: Vec<PreparedInlineItem>, width: f32, height: f32) -> Self {
+impl<T> Line<T> {
+    pub fn new(items: Vec<PreparedInlineItem<T>>, width: f32, height: f32) -> Self {
         Self {
             items,
             width,
@@ -16,11 +17,11 @@ impl Line {
     }
 }
 
-pub fn break_lines(
-    items: Vec<PreparedInlineItem>,
+pub fn break_lines<T>(
+    items: Vec<PreparedInlineItem<T>>,
     max_width: f32,
     min_line_height: f32,
-) -> Vec<Line> {
+) -> Vec<Line<T>> {
     let mut completed_lines = Vec::new();
     let mut current_line_items = Vec::new();
     let mut current_line_width = 0.0;
@@ -65,19 +66,19 @@ pub fn break_lines(
     completed_lines
 }
 
-fn break_line(
+fn break_line<T>(
     min_line_height: f32,
-    current_line_items: &mut Vec<PreparedInlineItem>,
+    current_line_items: &mut Vec<PreparedInlineItem<T>>,
     current_line_width: &mut f32,
     current_height: &mut f32,
-    completed_lines: &mut Vec<Line>,
+    completed_lines: &mut Vec<Line<T>>,
 ) {
     let line_width = current_line_items
         .last()
         .map_or(*current_line_width, |item| {
             *current_line_width - (item.width - item.fit_width)
         });
-    completed_lines.push(Line::new(
+    completed_lines.push(Line::<T>::new(
         std::mem::take(current_line_items),
         line_width,
         current_height.max(min_line_height),
@@ -89,11 +90,10 @@ fn break_line(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fragment::{FragmentKind, LayoutFragment};
-    use crate::geom::PhysicalRect;
     use crate::inline::PreparedInlineItemKind;
-    use crate::style::ComputedStyle;
     use blink_dom::{Dom, DomNodeId};
+
+    type TestItem = PreparedInlineItem<()>;
 
     const LINE_HEIGHT: f32 = 16.0;
 
@@ -103,12 +103,7 @@ mod tests {
         (dom, node)
     }
 
-    fn text_item(
-        dom_node: DomNodeId,
-        text: &str,
-        width: f32,
-        fit_width: f32,
-    ) -> PreparedInlineItem {
+    fn text_item(dom_node: DomNodeId, text: &str, width: f32, fit_width: f32) -> TestItem {
         PreparedInlineItem {
             kind: PreparedInlineItemKind::TextSegment {
                 dom_node,
@@ -120,16 +115,11 @@ mod tests {
         }
     }
 
-    fn atomic_item(width: f32, fit_width: f32) -> PreparedInlineItem {
+    fn atomic_item(width: f32, fit_width: f32) -> TestItem {
         PreparedInlineItem {
             kind: PreparedInlineItemKind::AtomicInline {
                 // The line breaker treats the fragment ID as opaque.
-                fragment: LayoutFragment::new(
-                    None,
-                    PhysicalRect::from_xywh(0.0, 0.0, 0.0, 0.0),
-                    Some(ComputedStyle::default()),
-                    FragmentKind::Box,
-                ),
+                fragment: (),
             },
             width,
             fit_width,
@@ -137,7 +127,7 @@ mod tests {
         }
     }
 
-    fn forced_break() -> PreparedInlineItem {
+    fn forced_break() -> TestItem {
         PreparedInlineItem {
             kind: PreparedInlineItemKind::ForcedBreak,
             width: 0.0,
@@ -290,7 +280,7 @@ mod tests {
 
     #[test]
     fn empty_input_produces_no_lines() {
-        let lines = break_lines(Vec::new(), 100.0, LINE_HEIGHT);
+        let lines = break_lines::<()>(Vec::new(), 100.0, LINE_HEIGHT);
 
         assert!(lines.is_empty());
     }
