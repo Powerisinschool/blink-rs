@@ -63,12 +63,12 @@ impl LayoutFragment {
     }
 
     #[must_use]
-    pub fn get_first_child(&self) -> Option<LayoutFragmentId> {
+    pub fn first_child(&self) -> Option<LayoutFragmentId> {
         self.first_child
     }
 
     #[must_use]
-    pub fn get_next_sibling(&self) -> Option<LayoutFragmentId> {
+    pub fn next_sibling(&self) -> Option<LayoutFragmentId> {
         self.next_sibling
     }
 
@@ -92,23 +92,23 @@ impl LayoutFragment {
         }
     }
 
-    pub fn get_origin(&self) -> &PhysicalOffset {
+    pub fn origin(&self) -> &PhysicalOffset {
         &self.rect.origin
     }
 
-    pub fn get_size(&self) -> &PhysicalSize {
+    pub fn size(&self) -> &PhysicalSize {
         &self.rect.size
     }
 
-    pub fn get_width(&self) -> f32 {
+    pub fn width(&self) -> f32 {
         self.rect.size.width
     }
 
-    pub fn get_height(&self) -> f32 {
+    pub fn height(&self) -> f32 {
         self.rect.size.height
     }
 
-    pub(self) fn get_kind_text(&self) -> String {
+    pub(self) fn kind_text(&self) -> String {
         match &self.kind {
             FragmentKind::Box => "Box".to_string(),
             FragmentKind::Line => "Line".to_string(),
@@ -129,7 +129,7 @@ impl fmt::Debug for LayoutFragment {
         debug
             .field("rect", &self.rect)
             .field("style", &self.style)
-            .field("kind", &self.get_kind_text());
+            .field("kind", &self.kind_text());
 
         match &self.first_child {
             Some(id) => debug.field("first_child", id),

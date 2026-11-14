@@ -138,8 +138,8 @@ impl Renderer for CanvasRenderer {
                 self.canvas.draw_box(
                     abs_origin.x,
                     abs_origin.y,
-                    fragment.get_width(),
-                    fragment.get_height(),
+                    fragment.width(),
+                    fragment.height(),
                     ColorU8::from_rgba(30, 110, 210, 255),
                 );
             }

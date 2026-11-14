@@ -52,11 +52,11 @@ pub(crate) fn layout_node(
     let initial_width = node_width.unwrap_or(if is_inline_level {
         0.0
     } else {
-        space.get_available_width()
+        space.available_width()
     });
 
-    let available_width = node_width.unwrap_or(space.get_available_width());
-    let child_space = ConstraintSpace::new(available_width, space.get_available_height());
+    let available_width = node_width.unwrap_or(space.available_width());
+    let child_space = ConstraintSpace::new(available_width, space.available_height());
 
     let (first_child_id, total_child_height, max_line_width) =
         layout_flow_children(node_id, ctx, &child_space, arena);
@@ -125,7 +125,7 @@ fn layout_flow_children(
                 let run_width = flush_inline_run(
                     &mut inline_run,
                     ctx,
-                    child_space.get_available_width(),
+                    child_space.available_width(),
                     &mut current_y_cursor,
                     arena,
                     &mut child_fragments,
@@ -134,9 +134,9 @@ fn layout_flow_children(
             }
 
             if let Some(block_fragment) = layout_node(dom_child, ctx, *child_space, arena) {
-                let height = block_fragment.get_height();
-                let width = block_fragment.get_width();
-                let new_origin = block_fragment.get_origin().with_y(current_y_cursor);
+                let height = block_fragment.height();
+                let width = block_fragment.width();
+                let new_origin = block_fragment.origin().with_y(current_y_cursor);
 
                 child_fragments.push(block_fragment.with_origin(new_origin));
 
@@ -152,7 +152,7 @@ fn layout_flow_children(
         let run_width = flush_inline_run(
             &mut inline_run,
             ctx,
-            child_space.get_available_width(),
+            child_space.available_width(),
             &mut current_y_cursor,
             arena,
             &mut child_fragments,
@@ -234,9 +234,9 @@ fn prepare_inline_items(
             && let Some(fragment) = layout_atomic_inline(item.dom_node, max_width, ctx, arena)
         {
             prepared_items.push(PreparedInlineItem {
-                width: fragment.get_width(),
-                fit_width: fragment.get_width(),
-                height: fragment.get_height(),
+                width: fragment.width(),
+                fit_width: fragment.width(),
+                height: fragment.height(),
                 kind: PreparedInlineItemKind::AtomicInline { fragment },
             });
         }
@@ -288,7 +288,7 @@ fn build_line_fragments(
                     next_child_id = Some(arena.add_fragment(fragment));
                 }
                 PreparedInlineItemKind::AtomicInline { fragment } => {
-                    let new_origin = fragment.get_origin().with_x(x);
+                    let new_origin = fragment.origin().with_x(x);
                     next_child_id = Some(
                         arena.add_fragment(
                             fragment
@@ -384,7 +384,7 @@ mod tests {
             .expect("Expected parent fragment");
 
         assert_eq!(
-            parent_fragment.get_width(),
+            parent_fragment.width(),
             40.0,
             "Inline element should shrink-wrap its child's width"
         );
@@ -438,7 +438,7 @@ mod tests {
             .expect("Expected child1 fragment");
 
         assert_eq!(
-            *child1_fragment.get_origin(),
+            *child1_fragment.origin(),
             PhysicalOffset::new(0.0, 0.0),
             "Inline element should shrink-wrap its child's width"
         );
@@ -448,7 +448,7 @@ mod tests {
             .expect("Expected child2 fragment");
 
         assert_eq!(
-            *child2_fragment.get_origin(),
+            *child2_fragment.origin(),
             PhysicalOffset::new(40.0, 0.0),
             "Inline element should shrink-wrap its child's width"
         );
@@ -458,7 +458,7 @@ mod tests {
             .expect("Expected child3 fragment");
 
         assert_eq!(
-            *child3_fragment.get_origin(),
+            *child3_fragment.origin(),
             PhysicalOffset::new(0.0, 0.0),
             "Inline element should shrink-wrap its child's width"
         );
@@ -468,7 +468,7 @@ mod tests {
             .expect("Expected parent fragment");
 
         assert_eq!(
-            parent_fragment.get_height(),
+            parent_fragment.height(),
             40.0,
             "Inline element should shrink-wrap its child's width"
         );

@@ -13,12 +13,12 @@ impl ConstraintSpace {
     }
 
     #[must_use]
-    pub fn get_available_width(&self) -> f32 {
+    pub fn available_width(&self) -> f32 {
         self.available_size.width
     }
 
     #[must_use]
-    pub fn get_available_height(&self) -> f32 {
+    pub fn available_height(&self) -> f32 {
         self.available_size.height
     }
 }

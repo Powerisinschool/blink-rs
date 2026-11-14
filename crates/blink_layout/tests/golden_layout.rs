@@ -89,8 +89,8 @@ fn dump_node(
     let fragment = &arena
         .get_fragment(fragment_id)
         .expect("fragment index out of bounds");
-    let abs_x = parent_x + fragment.get_origin().x;
-    let abs_y = parent_y + fragment.get_origin().y;
+    let abs_x = parent_x + fragment.origin().x;
+    let abs_y = parent_y + fragment.origin().y;
 
     let name = fragment
         .dom_node
@@ -104,15 +104,15 @@ fn dump_node(
         name,
         abs_x,
         abs_y,
-        fragment.get_width(),
-        fragment.get_height(),
+        fragment.width(),
+        fragment.height(),
     )
     .unwrap();
 
-    let mut child = fragment.get_first_child();
+    let mut child = fragment.first_child();
     while let Some(child_id) = child {
         dump_node(dom, arena, child_id, depth + 1, abs_x, abs_y, out);
-        child = arena.get_fragment(child_id).unwrap().get_next_sibling();
+        child = arena.get_fragment(child_id).unwrap().next_sibling();
     }
 }
 

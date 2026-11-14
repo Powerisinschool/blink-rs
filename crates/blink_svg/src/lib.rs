@@ -51,8 +51,8 @@ impl Renderer for SvgRenderer {
     ) {
         let x = abs_origin.x;
         let y = abs_origin.y;
-        let width = fragment.get_width();
-        let height = fragment.get_height();
+        let width = fragment.width();
+        let height = fragment.height();
 
         match &fragment.kind {
             FragmentKind::Box => {
