@@ -1,6 +1,7 @@
 use crate::engine::LayoutContext;
 use crate::fragment::LayoutFragment;
 use crate::style::{DisplayInside, DisplayOutside, compute_style};
+use crate::text::TextMeasurer;
 use blink_dom::DomNodeId;
 
 #[derive(Debug, PartialEq, Clone)]
@@ -101,7 +102,10 @@ impl PreparedInlineItem {
     }
 }
 
-pub fn collect_inline_items(run: &[DomNodeId], ctx: &LayoutContext) -> Vec<InlineItem> {
+pub fn collect_inline_items<M: TextMeasurer + ?Sized>(
+    run: &[DomNodeId],
+    ctx: &LayoutContext<M>,
+) -> Vec<InlineItem> {
     let mut items = Vec::new();
     let mut last_was_space = true;
 
@@ -113,9 +117,9 @@ pub fn collect_inline_items(run: &[DomNodeId], ctx: &LayoutContext) -> Vec<Inlin
     items
 }
 
-pub fn collect_recursive(
+pub fn collect_recursive<M: TextMeasurer + ?Sized>(
     node_id: DomNodeId,
-    ctx: &LayoutContext,
+    ctx: &LayoutContext<M>,
     items: &mut Vec<InlineItem>,
     last_was_space: &mut bool,
 ) {
@@ -249,7 +253,7 @@ mod tests {
         let ctx = LayoutContext {
             dom: &dom,
             stylesheet: &CSSStyleSheet::new(),
-            text_measurer: Box::new(FixedWidth {}),
+            text_measurer: &FixedWidth {},
         };
 
         let items = collect_inline_items(&[text_id], &ctx);
@@ -267,7 +271,7 @@ mod tests {
         let ctx = LayoutContext {
             dom: &dom,
             stylesheet: &CSSStyleSheet::new(),
-            text_measurer: Box::new(FixedWidth {}),
+            text_measurer: &FixedWidth {},
         };
 
         let items = collect_inline_items(&[t1, t2], &ctx);
@@ -299,7 +303,7 @@ mod tests {
         let ctx = LayoutContext {
             dom: &dom,
             stylesheet: &CSSStyleSheet::new(),
-            text_measurer: Box::new(FixedWidth {}),
+            text_measurer: &FixedWidth {},
         };
 
         let items = collect_inline_items(&[parent], &ctx);
@@ -321,7 +325,7 @@ mod tests {
         let ctx = LayoutContext {
             dom: &dom,
             stylesheet: &CSSStyleSheet::new(),
-            text_measurer: Box::new(FixedWidth {}),
+            text_measurer: &FixedWidth {},
         };
 
         let items = collect_inline_items(&[t1, br, t2], &ctx);
@@ -338,7 +342,7 @@ mod tests {
         let ctx = LayoutContext {
             dom: &dom,
             stylesheet: &CSSStyleSheet::new(),
-            text_measurer: Box::new(FixedWidth {}),
+            text_measurer: &FixedWidth {},
         };
 
         let items = collect_inline_items(&[t1], &ctx);

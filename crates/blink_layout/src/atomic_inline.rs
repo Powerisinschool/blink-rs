@@ -1,15 +1,16 @@
-use crate::engine::{LayoutContext, layout_node};
+use crate::engine::LayoutContext;
 use crate::fragment::{FragmentArena, LayoutFragment};
 use crate::space::ConstraintSpace;
+use crate::text::TextMeasurer;
 use blink_dom::DomNodeId;
 
-pub fn layout_atomic_inline(
+pub fn layout_atomic_inline<M: TextMeasurer + ?Sized>(
     node_id: DomNodeId,
     available_width: f32,
-    ctx: &mut LayoutContext,
+    ctx: &mut LayoutContext<M>,
     arena: &mut FragmentArena,
 ) -> Option<LayoutFragment> {
     let child_space = ConstraintSpace::new(available_width, f32::MAX);
 
-    layout_node(node_id, ctx, child_space, arena)
+    ctx.layout_node(node_id, child_space, arena)
 }

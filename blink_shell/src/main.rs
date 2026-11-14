@@ -1,6 +1,5 @@
 use blink_css::{CSSStyleSheet, parse_css_into_stylesheet};
 use blink_html::parse_html;
-use blink_layout::engine::build_layout_tree;
 use blink_layout::space::ConstraintSpace;
 use blink_layout::text::FontdueMeasurer;
 use blink_render::render_to_png;
@@ -46,12 +45,12 @@ fn main() {
     let mut ctx = blink_layout::engine::LayoutContext {
         dom: &output_dom,
         stylesheet: &stylesheet,
-        text_measurer: Box::new(FontdueMeasurer {
+        text_measurer: &FontdueMeasurer {
             font: font.clone(),
             font_size,
-        }),
+        },
     };
-    let arena = build_layout_tree(root_id, &mut ctx, initial_space);
+    let arena = ctx.build_layout_tree(root_id, initial_space);
 
     // println!();
     // println!("Fragment arena: {:#?}", arena);
