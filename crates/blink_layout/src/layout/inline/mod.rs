@@ -4,7 +4,6 @@ use crate::layout::inline::line_breaker::Line;
 use crate::layout::{
     FragmentArena, FragmentKind, LayoutContext, LayoutFragment, LayoutFragmentId, TextMeasurer,
 };
-use crate::style::compute_style;
 use blink_dom::DomNodeId;
 
 pub(super) mod atomic;
@@ -43,7 +42,9 @@ fn build_line_fragments<M: TextMeasurer + ?Sized>(
                         PhysicalOffset::new(x, 0.0),
                         PhysicalSize::new(item.fit_width, item.height),
                     );
-                    let text_style = compute_style(dom_node, ctx.dom, ctx.stylesheet);
+                    let text_style =
+                        ctx.style_cache
+                            .get_or_compute(dom_node, ctx.dom, ctx.stylesheet);
                     let fragment = LayoutFragment::new(
                         Some(dom_node),
                         text_rect,

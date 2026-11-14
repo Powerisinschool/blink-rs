@@ -10,7 +10,38 @@ pub use types::{
 use blink_css::CSSStyleSheet;
 use blink_dom::{Dom, DomNodeId, get_tag_name};
 
-pub fn compute_style(node_id: DomNodeId, dom: &Dom, stylesheet: &CSSStyleSheet) -> ComputedStyle {
+pub struct StyleCache {
+    styles: Vec<Option<ComputedStyle>>,
+}
+
+impl Default for StyleCache {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl StyleCache {
+    pub fn new() -> Self {
+        Self { styles: Vec::new() }
+    }
+
+    pub fn get_or_compute(
+        &mut self,
+        node_id: DomNodeId,
+        dom: &Dom,
+        stylesheet: &CSSStyleSheet,
+    ) -> ComputedStyle {
+        let idx = node_id.slot();
+        if idx >= self.styles.len() {
+            self.styles.resize(idx + 1, None);
+        }
+        self.styles[idx]
+            .get_or_insert_with(|| compute_style(node_id, dom, stylesheet))
+            .clone()
+    }
+}
+
+fn compute_style(node_id: DomNodeId, dom: &Dom, stylesheet: &CSSStyleSheet) -> ComputedStyle {
     let mut rules = matching::get_matching_rules(node_id, dom, stylesheet);
 
     cascade::cascade_properties(&mut rules, default_display(node_id, dom))

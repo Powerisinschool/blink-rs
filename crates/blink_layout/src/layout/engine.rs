@@ -3,7 +3,7 @@ use super::inline::layout_inline_run;
 use super::space::ConstraintSpace;
 use super::text::TextMeasurer;
 use crate::geom::{PhysicalOffset, PhysicalRect, PhysicalSize};
-use crate::style::{DisplayOutside, compute_style};
+use crate::style::{DisplayOutside, StyleCache};
 use blink_css::CSSStyleSheet;
 use blink_dom::{Dom, DomNodeId};
 
@@ -11,6 +11,7 @@ pub struct LayoutContext<'a, M: TextMeasurer + ?Sized> {
     pub dom: &'a Dom,
     pub stylesheet: &'a CSSStyleSheet,
     pub text_measurer: &'a M,
+    pub style_cache: StyleCache,
 }
 
 impl<'a, M: TextMeasurer + ?Sized> LayoutContext<'a, M> {
@@ -51,7 +52,9 @@ impl<'a, M: TextMeasurer + ?Sized> LayoutContext<'a, M> {
             return None;
         }
 
-        let computed_style = compute_style(node_id, self.dom, self.stylesheet);
+        let computed_style = self
+            .style_cache
+            .get_or_compute(node_id, self.dom, self.stylesheet);
 
         if computed_style.display.is_none() {
             return None;
@@ -112,7 +115,9 @@ impl<'a, M: TextMeasurer + ?Sized> LayoutContext<'a, M> {
         let mut current_dom_child = self.dom.get_first_child(node_id);
 
         while let Some(dom_child) = current_dom_child {
-            let child_style = compute_style(dom_child, self.dom, self.stylesheet);
+            let child_style = self
+                .style_cache
+                .get_or_compute(dom_child, self.dom, self.stylesheet);
 
             if child_style.display.is_none() {
                 current_dom_child = self.dom.get_next_sibling(dom_child);
@@ -213,6 +218,7 @@ mod tests {
             dom: &dom,
             stylesheet: &stylesheet,
             text_measurer: &FixedWidth {},
+            style_cache: StyleCache::default(),
         };
 
         let arena = ctx.build_layout_tree(parent, space);
@@ -267,6 +273,7 @@ mod tests {
             dom: &dom,
             stylesheet: &stylesheet,
             text_measurer: &FixedWidth {},
+            style_cache: StyleCache::default(),
         };
 
         let arena = ctx.build_layout_tree(parent, space);

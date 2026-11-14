@@ -1,6 +1,7 @@
 use blink_css::{CSSStyleSheet, parse_css_into_stylesheet};
 use blink_html::parse_html;
 use blink_layout::layout::{ConstraintSpace, FontdueMeasurer, LayoutContext};
+use blink_layout::style::StyleCache;
 use blink_render::render_to_png;
 use blink_svg::render_to_svg;
 use std::fs;
@@ -48,6 +49,7 @@ fn main() {
             font: font.clone(),
             font_size,
         },
+        style_cache: StyleCache::default(),
     };
     let arena = ctx.build_layout_tree(root_id, initial_space);
 
