@@ -22,20 +22,20 @@ impl<'a, M: TextMeasurer + ?Sized> LayoutContext<'a, M> {
     ) -> FragmentArena {
         let mut arena = FragmentArena::new();
 
-        let root_fragment_id = self.walk_node(root_id, initial_space, &mut arena);
+        let root_fragment_id =
+            self.layout_node(root_id, initial_space, &mut arena)
+                .map(|fragment| {
+                    let margin = fragment
+                        .style
+                        .as_ref()
+                        .map(|s| s.margin)
+                        .unwrap_or_default();
+                    let origin = PhysicalOffset::new(margin.left, margin.top);
+                    arena.add_fragment(fragment.with_origin(origin))
+                });
         arena.set_root(root_fragment_id);
 
         arena
-    }
-
-    pub(crate) fn walk_node(
-        &mut self,
-        node_id: DomNodeId,
-        space: ConstraintSpace,
-        arena: &mut FragmentArena,
-    ) -> Option<LayoutFragmentId> {
-        self.layout_node(node_id, space, arena)
-            .map(|fragment| arena.add_fragment(fragment))
     }
 
     pub(crate) fn layout_node(
@@ -161,7 +161,7 @@ impl<'a, M: TextMeasurer + ?Sized> LayoutContext<'a, M> {
                     let height = block_fragment.height();
 
                     child_fragments.push(block_fragment.with_origin(new_origin));
-                    current_y_cursor += height;
+                    current_y_cursor += height + child_margin.bottom;
                     max_line_width = max_line_width.max(outer_width);
                 }
             }
