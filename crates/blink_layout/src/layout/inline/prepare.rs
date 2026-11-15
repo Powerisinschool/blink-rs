@@ -67,10 +67,17 @@ pub(crate) fn prepare_inline_items<T: TextMeasurer + ?Sized>(
         } else if item.is_atomic_inline()
             && let Some(fragment) = layout_atomic_inline(item.dom_node, max_width, ctx, arena)
         {
+            let margin = fragment
+                .style
+                .as_ref()
+                .map(|s| s.margin)
+                .unwrap_or_default();
+            let outer_width = fragment.width() + margin.horizontal();
+            let outer_height = fragment.height() + margin.vertical();
             prepared_items.push(PreparedInlineItem {
-                width: fragment.width(),
-                fit_width: fragment.width(),
-                height: fragment.height(),
+                width: outer_width,
+                fit_width: outer_width,
+                height: outer_height,
                 kind: PreparedInlineItemKind::AtomicInline { fragment },
             });
         }

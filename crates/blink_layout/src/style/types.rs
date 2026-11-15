@@ -120,6 +120,19 @@ impl EdgeSizes<f32> {
     }
 }
 
+impl<T: std::ops::Add<Output = T>> std::ops::Add for EdgeSizes<T> {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        Self {
+            top: self.top + rhs.top,
+            right: self.right + rhs.right,
+            bottom: self.bottom + rhs.bottom,
+            left: self.left + rhs.left,
+        }
+    }
+}
+
 impl EdgeSizes<BorderSide> {
     pub fn widths(self) -> EdgeSizes<f32> {
         let effective = |s: BorderSide| {

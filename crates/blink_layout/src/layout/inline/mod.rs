@@ -13,6 +13,7 @@ pub(super) mod prepare;
 
 fn build_line_fragments<M: TextMeasurer + ?Sized>(
     lines: Vec<Line>,
+    content_origin: PhysicalOffset,
     current_y_cursor: &mut f32,
     ctx: &mut LayoutContext<M>,
     arena: &mut FragmentArena,
@@ -56,7 +57,12 @@ fn build_line_fragments<M: TextMeasurer + ?Sized>(
                     next_child_id = Some(arena.add_fragment(fragment));
                 }
                 PreparedInlineItemKind::AtomicInline { fragment } => {
-                    let new_origin = fragment.origin().with_x(x);
+                    let margin = fragment
+                        .style
+                        .as_ref()
+                        .map(|s| s.margin)
+                        .unwrap_or_default();
+                    let new_origin = PhysicalOffset::new(x + margin.left, margin.top);
                     next_child_id = Some(
                         arena.add_fragment(
                             fragment
@@ -71,7 +77,7 @@ fn build_line_fragments<M: TextMeasurer + ?Sized>(
         // at the end, next_child_id is the first child of the line fragment
 
         let line_rect = PhysicalRect::new(
-            PhysicalOffset::new(0.0, *current_y_cursor),
+            PhysicalOffset::new(content_origin.x, content_origin.y + *current_y_cursor),
             PhysicalSize::new(line.width, line.height),
         );
         let line_fragment = LayoutFragment::new(None, line_rect, None, FragmentKind::Line)
@@ -88,6 +94,7 @@ fn build_line_fragments<M: TextMeasurer + ?Sized>(
 pub(super) fn layout_inline_run<M: TextMeasurer + ?Sized>(
     inline_run: &mut Vec<DomNodeId>,
     max_width: f32,
+    content_origin: PhysicalOffset,
     current_y_cursor: &mut f32,
     ctx: &mut LayoutContext<M>,
     arena: &mut FragmentArena,
@@ -99,7 +106,14 @@ pub(super) fn layout_inline_run<M: TextMeasurer + ?Sized>(
     let min_line_height = ctx.text_measurer.line_height();
     let lines = line_breaker::break_lines(prepared_items, max_width, min_line_height);
 
-    let run_max_width = build_line_fragments(lines, current_y_cursor, ctx, arena, child_fragments);
+    let run_max_width = build_line_fragments(
+        lines,
+        content_origin,
+        current_y_cursor,
+        ctx,
+        arena,
+        child_fragments,
+    );
     inline_run.clear();
 
     run_max_width

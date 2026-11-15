@@ -60,36 +60,41 @@ impl<'a, M: TextMeasurer + ?Sized> LayoutContext<'a, M> {
             return None;
         }
 
-        let node_width = computed_style.width;
-        let node_height = computed_style.height;
-
+        let edges = computed_style.border.widths() + computed_style.padding;
+        let margin = computed_style.margin;
         let is_inline_level = computed_style.display.outside() == Some(DisplayOutside::Inline);
 
-        let initial_width = node_width.unwrap_or(if is_inline_level {
-            0.0
-        } else {
-            space.available_width()
-        });
+        let child_available_width = match computed_style.width {
+            Some(w) => w.max(0.0),
+            None => (space.available_width() - margin.horizontal() - edges.horizontal()).max(0.0),
+        };
+        let child_available_height = match computed_style.height {
+            Some(h) => h.max(0.0),
+            None => (space.available_height() - margin.vertical() - edges.vertical()).max(0.0),
+        };
 
-        let available_width = node_width.unwrap_or(space.available_width());
-        let child_space = ConstraintSpace::new(available_width, space.available_height());
+        let child_space = ConstraintSpace::new(child_available_width, child_available_height);
+        let content_origin = PhysicalOffset::new(edges.left, edges.top);
 
         let (first_child_id, total_child_height, max_line_width) =
-            self.layout_flow_children(node_id, &child_space, arena);
+            self.layout_flow_children(node_id, &child_space, content_origin, arena);
 
-        let node_size = PhysicalSize::new(
-            if node_width.is_none() && is_inline_level {
-                max_line_width
-            } else {
-                initial_width
-            },
-            if node_height.is_none() {
-                total_child_height
-            } else {
-                node_height.unwrap_or_default()
-            },
+        let content_width = match computed_style.width {
+            Some(w) => w.max(0.0),
+            None if is_inline_level => max_line_width,
+            None => child_available_width,
+        };
+        let content_height = match computed_style.height {
+            Some(h) => h.max(0.0),
+            None => total_child_height,
+        };
+
+        let border_box_size = PhysicalSize::new(
+            content_width + edges.horizontal(),
+            content_height + edges.vertical(),
         );
-        let bounding_rect = PhysicalRect::new(PhysicalOffset::default(), node_size);
+
+        let bounding_rect = PhysicalRect::new(PhysicalOffset::default(), border_box_size);
         Some(
             LayoutFragment::new(
                 Some(node_id),
@@ -105,13 +110,14 @@ impl<'a, M: TextMeasurer + ?Sized> LayoutContext<'a, M> {
         &mut self,
         node_id: DomNodeId,
         child_space: &ConstraintSpace,
+        content_origin: PhysicalOffset,
         arena: &mut FragmentArena,
     ) -> (Option<LayoutFragmentId>, f32, f32) {
         let mut current_y_cursor = 0.0;
         let mut max_line_width: f32 = 0.0;
         let mut child_fragments: Vec<LayoutFragment> = Vec::new();
-
         let mut inline_run: Vec<DomNodeId> = Vec::new();
+
         let mut current_dom_child = self.dom.get_first_child(node_id);
 
         while let Some(dom_child) = current_dom_child {
@@ -134,6 +140,7 @@ impl<'a, M: TextMeasurer + ?Sized> LayoutContext<'a, M> {
                     let run_width = layout_inline_run(
                         &mut inline_run,
                         child_space.available_width(),
+                        content_origin,
                         &mut current_y_cursor,
                         self,
                         arena,
@@ -143,14 +150,19 @@ impl<'a, M: TextMeasurer + ?Sized> LayoutContext<'a, M> {
                 }
 
                 if let Some(block_fragment) = self.layout_node(dom_child, *child_space, arena) {
+                    let child_margin = child_style.margin;
+                    current_y_cursor += child_margin.top;
+
+                    let new_origin = PhysicalOffset::new(
+                        content_origin.x + child_margin.left,
+                        content_origin.y + current_y_cursor,
+                    );
+                    let outer_width = block_fragment.width() + child_margin.horizontal();
                     let height = block_fragment.height();
-                    let width = block_fragment.width();
-                    let new_origin = block_fragment.origin().with_y(current_y_cursor);
 
                     child_fragments.push(block_fragment.with_origin(new_origin));
-
                     current_y_cursor += height;
-                    max_line_width = max_line_width.max(width);
+                    max_line_width = max_line_width.max(outer_width);
                 }
             }
 
@@ -161,6 +173,7 @@ impl<'a, M: TextMeasurer + ?Sized> LayoutContext<'a, M> {
             let run_width = layout_inline_run(
                 &mut inline_run,
                 child_space.available_width(),
+                content_origin,
                 &mut current_y_cursor,
                 self,
                 arena,

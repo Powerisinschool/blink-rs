@@ -175,3 +175,8 @@ fn nested_inline() {
 fn display_none() {
     assert_golden("display_none");
 }
+
+#[test]
+fn box_model() {
+    assert_golden("box_model");
+}
