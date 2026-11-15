@@ -40,7 +40,7 @@ fn main() {
     // Calculate layout boundaries
     let initial_space = ConstraintSpace::from((OUTPUT_WIDTH, OUTPUT_HEIGHT));
 
-    let root_id = output_dom.get_root_node_id();
+    let root_id = output_dom.root_node_id();
 
     let mut ctx = LayoutContext {
         dom: &output_dom,

@@ -586,7 +586,7 @@ impl Dom {
         Ok(())
     }
 
-    pub fn get_nodes_len(&self) -> usize {
+    pub fn nodes_len(&self) -> usize {
         self.nodes.len()
     }
 
@@ -648,7 +648,7 @@ impl Dom {
         }
     }
 
-    pub fn get_root_node_id(&self) -> DomNodeId {
+    pub fn root_node_id(&self) -> DomNodeId {
         DomNodeId::new(0, 0).unwrap()
     }
 

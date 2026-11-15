@@ -37,7 +37,7 @@ fn layout_fixture(html: &str, css: &str) -> (Dom, FragmentArena) {
         style_cache: StyleCache::default(),
     };
 
-    let arena = ctx.build_layout_tree(dom.get_root_node_id(), space);
+    let arena = ctx.build_layout_tree(dom.root_node_id(), space);
 
     (dom, arena)
 }
