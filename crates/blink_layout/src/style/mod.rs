@@ -16,13 +16,15 @@ pub struct StyleCache {
 
 impl Default for StyleCache {
     fn default() -> Self {
-        Self::new()
+        Self::new(0)
     }
 }
 
 impl StyleCache {
-    pub fn new() -> Self {
-        Self { styles: Vec::new() }
+    pub fn new(size: usize) -> Self {
+        Self {
+            styles: Vec::with_capacity(size),
+        }
     }
 
     pub fn get_or_compute(

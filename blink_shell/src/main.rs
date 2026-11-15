@@ -49,7 +49,7 @@ fn main() {
             font: font.clone(),
             font_size,
         },
-        style_cache: StyleCache::default(),
+        style_cache: StyleCache::new(output_dom.nodes_len()), // Initialize StyleCache with the number of nodes in the DOM
     };
     let arena = ctx.build_layout_tree(root_id, initial_space);
 
