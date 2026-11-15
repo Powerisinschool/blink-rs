@@ -6,10 +6,10 @@ use crate::layout::{
 };
 use blink_dom::DomNodeId;
 
-pub(super) mod atomic;
-pub(super) mod collect;
-pub(super) mod line_breaker;
-pub(super) mod prepare;
+mod atomic;
+mod collect;
+mod line_breaker;
+mod prepare;
 
 fn build_line_fragments<M: TextMeasurer + ?Sized>(
     lines: Vec<Line>,

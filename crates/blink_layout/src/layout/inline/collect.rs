@@ -73,33 +73,9 @@ pub struct PreparedInlineItem<T = LayoutFragment> {
 }
 
 impl<T> PreparedInlineItem<T> {
-    // pub fn is_atomic_inline(&self) -> bool {
-    //     matches!(self.kind, PreparedInlineItemKind::AtomicInline { .. })
-    // }
-
     pub fn is_forced_break(&self) -> bool {
         matches!(self.kind, PreparedInlineItemKind::ForcedBreak)
     }
-
-    // pub fn is_text_segment(&self) -> bool {
-    //     matches!(self.kind, PreparedInlineItemKind::TextSegment { .. })
-    // }
-
-    // pub fn get_text_segment(&self) -> Option<(&DomNodeId, &String)> {
-    //     if let PreparedInlineItemKind::TextSegment { dom_node, text } = &self.kind {
-    //         Some((dom_node, text))
-    //     } else {
-    //         None
-    //     }
-    // }
-
-    // pub fn get_atomic_inline_fragment(&self) -> Option<&T> {
-    //     if let PreparedInlineItemKind::AtomicInline { fragment } = &self.kind {
-    //         Some(fragment)
-    //     } else {
-    //         None
-    //     }
-    // }
 }
 
 pub fn collect_inline_items<M: TextMeasurer + ?Sized>(
