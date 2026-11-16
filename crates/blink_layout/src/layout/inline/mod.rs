@@ -43,13 +43,13 @@ fn build_line_fragments<M: TextMeasurer + ?Sized>(
                         PhysicalOffset::new(x, 0.0),
                         PhysicalSize::new(item.fit_width, item.height),
                     );
-                    let text_style =
+                    let (text_style_id, _) =
                         ctx.style_cache
                             .get_or_compute(dom_node, ctx.dom, ctx.stylesheet);
                     let fragment = LayoutFragment::new(
                         Some(dom_node),
                         text_rect,
-                        Some(text_style),
+                        Some(text_style_id),
                         FragmentKind::Text(text.clone()),
                     )
                     .with_next_sibling(next_child_id);
@@ -59,7 +59,7 @@ fn build_line_fragments<M: TextMeasurer + ?Sized>(
                 PreparedInlineItemKind::AtomicInline { fragment } => {
                     let margin = fragment
                         .style
-                        .as_ref()
+                        .and_then(|style_id| ctx.style_cache.get(style_id))
                         .map(|s| s.margin)
                         .unwrap_or_default();
                     let new_origin = PhysicalOffset::new(x + margin.left, margin.top);

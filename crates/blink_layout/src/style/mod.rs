@@ -10,8 +10,12 @@ pub use types::{
 use blink_css::CSSStyleSheet;
 use blink_dom::{Dom, DomNodeId, get_tag_name};
 
+pub struct ComputedStyleTag;
+pub type ComputedStyleId = blink_core::base::Id<ComputedStyleTag>;
+
 pub struct StyleCache {
-    styles: Vec<Option<ComputedStyle>>,
+    styles: Vec<ComputedStyle>,
+    node_cache: Vec<Option<(blink_core::generator::Generation, ComputedStyleId)>>,
 }
 
 impl Default for StyleCache {
@@ -24,6 +28,7 @@ impl StyleCache {
     pub fn new(size: usize) -> Self {
         Self {
             styles: Vec::with_capacity(size),
+            node_cache: vec![None; size],
         }
     }
 
@@ -32,14 +37,42 @@ impl StyleCache {
         node_id: DomNodeId,
         dom: &Dom,
         stylesheet: &CSSStyleSheet,
-    ) -> ComputedStyle {
+    ) -> (ComputedStyleId, &ComputedStyle) {
         let idx = node_id.slot();
-        if idx >= self.styles.len() {
-            self.styles.resize(idx + 1, None);
-        }
-        self.styles[idx]
-            .get_or_insert_with(|| compute_style(node_id, dom, stylesheet))
-            .clone()
+        let g = node_id.generation();
+
+        let id = match self.node_cache.get(idx) {
+            Some(Some((cached_gen, style_id))) if *cached_gen == g => *style_id,
+            _ => {
+                let style = compute_style(node_id, dom, stylesheet);
+                let id = ComputedStyleId::from_usize(self.styles.len()).expect(
+                    "StyleCache has reached its maximum capacity of ComputedStyleId values",
+                );
+                self.styles.push(style);
+
+                if idx >= self.node_cache.len() {
+                    self.node_cache.resize(idx + 1, None);
+                }
+                self.node_cache[idx] = Some((g, id));
+                id
+            }
+        };
+
+        (id, &self.styles[id.get_index()])
+    }
+
+    /// `insert_anonymous` inserts a new anonymous style into the cache and returns its `ComputedStyleId`.
+    /// This is useful for creating styles for elements that don't have a corresponding DOM node.
+    /// Returns `None` if the insertion fails (e.g., if the cache is full).
+    pub fn insert_anonymous(&mut self, style: ComputedStyle) -> Option<ComputedStyleId> {
+        let id = ComputedStyleId::from_u32(self.styles.len() as u32)?;
+        self.styles.push(style);
+        Some(id)
+    }
+
+    #[inline]
+    pub fn get(&self, id: ComputedStyleId) -> Option<&ComputedStyle> {
+        self.styles.get(id.get_index())
     }
 }
 

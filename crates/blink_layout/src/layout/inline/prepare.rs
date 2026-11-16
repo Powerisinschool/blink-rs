@@ -69,7 +69,7 @@ pub(crate) fn prepare_inline_items<T: TextMeasurer + ?Sized>(
         {
             let margin = fragment
                 .style
-                .as_ref()
+                .and_then(|style_id| ctx.style_cache.get(style_id))
                 .map(|s| s.margin)
                 .unwrap_or_default();
             let outer_width = fragment.width() + margin.horizontal();

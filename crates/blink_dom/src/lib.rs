@@ -1,7 +1,7 @@
 mod slot_store;
 
 use crate::slot_store::{SlotId, SlotStore};
-use blink_core::generator::GEN_DEAD;
+use blink_core::generator::{GEN_DEAD, Generation};
 use markup5ever::{Attribute, QualName, ns};
 use std::collections::HashMap;
 use std::fmt;
@@ -267,7 +267,7 @@ pub type DomNodeId = blink_core::generator::GenId<DomNodeTag>;
 pub struct DomNode {
     parent: Option<DomNodeId>,
     next_sibling: Option<DomNodeId>,
-    generation: u16,
+    generation: Generation,
     kind: NodeKind,
 }
 

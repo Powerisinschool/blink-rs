@@ -111,7 +111,7 @@ pub fn collect_recursive<M: TextMeasurer + ?Sized>(
         return; // Text nodes are leaf nodes, so we can return early
     }
 
-    let style = ctx
+    let (_, style) = ctx
         .style_cache
         .get_or_compute(node_id, ctx.dom, ctx.stylesheet);
 

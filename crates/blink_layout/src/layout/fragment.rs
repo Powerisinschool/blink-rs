@@ -1,5 +1,5 @@
 use crate::geom::{PhysicalOffset, PhysicalRect, PhysicalSize};
-use crate::style::ComputedStyle;
+use crate::style::ComputedStyleId;
 use blink_dom::DomNodeId;
 use std::fmt;
 use std::fmt::Formatter;
@@ -15,7 +15,7 @@ pub enum FragmentKind {
 
 pub struct LayoutFragment {
     pub dom_node: Option<DomNodeId>,
-    pub style: Option<ComputedStyle>,
+    pub style: Option<ComputedStyleId>,
     rect: PhysicalRect,
     pub kind: FragmentKind,
 
@@ -27,7 +27,7 @@ impl LayoutFragment {
     pub fn new(
         dom_node: Option<DomNodeId>,
         rect: PhysicalRect,
-        style: Option<ComputedStyle>,
+        style: Option<ComputedStyleId>,
         kind: FragmentKind,
     ) -> Self {
         Self {

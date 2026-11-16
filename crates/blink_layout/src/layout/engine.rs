@@ -23,16 +23,17 @@ impl<'a, M: TextMeasurer + ?Sized> LayoutContext<'a, M> {
         let mut arena = FragmentArena::new();
 
         let root_fragment_id =
-            self.layout_node(root_id, initial_space, &mut arena)
-                .map(|fragment| {
-                    let margin = fragment
-                        .style
-                        .as_ref()
-                        .map(|s| s.margin)
-                        .unwrap_or_default();
-                    let origin = PhysicalOffset::new(margin.left, margin.top);
-                    arena.add_fragment(fragment.with_origin(origin))
-                });
+            if let Some(fragment) = self.layout_node(root_id, initial_space, &mut arena) {
+                let margin = fragment
+                    .style
+                    .and_then(|style_id| self.style_cache.get(style_id))
+                    .map(|s| s.margin)
+                    .unwrap_or_default();
+                let origin = PhysicalOffset::new(margin.left, margin.top);
+                Some(arena.add_fragment(fragment.with_origin(origin)))
+            } else {
+                None
+            };
         arena.set_root(root_fragment_id);
 
         arena
@@ -52,23 +53,30 @@ impl<'a, M: TextMeasurer + ?Sized> LayoutContext<'a, M> {
             return None;
         }
 
-        let computed_style = self
-            .style_cache
-            .get_or_compute(node_id, self.dom, self.stylesheet);
+        let (computed_style_id, width, height, edges, margin, is_inline_level) = {
+            let (id, style) = self
+                .style_cache
+                .get_or_compute(node_id, self.dom, self.stylesheet);
 
-        if computed_style.display.is_none() {
-            return None;
-        }
+            if style.display.is_none() {
+                return None;
+            }
 
-        let edges = computed_style.border.widths() + computed_style.padding;
-        let margin = computed_style.margin;
-        let is_inline_level = computed_style.display.outside() == Some(DisplayOutside::Inline);
+            (
+                id,
+                style.width,
+                style.height,
+                style.border.widths() + style.padding,
+                style.margin,
+                style.display.outside() == Some(DisplayOutside::Inline),
+            )
+        };
 
-        let child_available_width = match computed_style.width {
+        let child_available_width = match width {
             Some(w) => w.max(0.0),
             None => (space.available_width() - margin.horizontal() - edges.horizontal()).max(0.0),
         };
-        let child_available_height = match computed_style.height {
+        let child_available_height = match height {
             Some(h) => h.max(0.0),
             None => (space.available_height() - margin.vertical() - edges.vertical()).max(0.0),
         };
@@ -79,12 +87,12 @@ impl<'a, M: TextMeasurer + ?Sized> LayoutContext<'a, M> {
         let (first_child_id, total_child_height, max_line_width) =
             self.layout_flow_children(node_id, &child_space, content_origin, arena);
 
-        let content_width = match computed_style.width {
+        let content_width = match width {
             Some(w) => w.max(0.0),
             None if is_inline_level => max_line_width,
             None => child_available_width,
         };
-        let content_height = match computed_style.height {
+        let content_height = match height {
             Some(h) => h.max(0.0),
             None => total_child_height,
         };
@@ -99,7 +107,7 @@ impl<'a, M: TextMeasurer + ?Sized> LayoutContext<'a, M> {
             LayoutFragment::new(
                 Some(node_id),
                 bounding_rect,
-                Some(computed_style),
+                Some(computed_style_id),
                 FragmentKind::Box,
             )
             .with_first_child(first_child_id),
@@ -121,17 +129,24 @@ impl<'a, M: TextMeasurer + ?Sized> LayoutContext<'a, M> {
         let mut current_dom_child = self.dom.get_first_child(node_id);
 
         while let Some(dom_child) = current_dom_child {
-            let child_style = self
-                .style_cache
-                .get_or_compute(dom_child, self.dom, self.stylesheet);
+            let (child_margin, is_child_inline_level) = {
+                let (_, style) =
+                    self.style_cache
+                        .get_or_compute(dom_child, self.dom, self.stylesheet);
 
-            if child_style.display.is_none() {
-                current_dom_child = self.dom.get_next_sibling(dom_child);
-                continue;
-            }
+                if style.display.is_none() {
+                    current_dom_child = self.dom.get_next_sibling(dom_child);
+                    continue;
+                }
 
-            let is_inline = self.dom.get_node(dom_child).unwrap().is_text()
-                || child_style.display.outside() == Some(DisplayOutside::Inline);
+                (
+                    style.margin,
+                    style.display.outside() == Some(DisplayOutside::Inline),
+                )
+            };
+
+            let is_inline =
+                self.dom.get_node(dom_child).unwrap().is_text() || is_child_inline_level;
 
             if is_inline {
                 inline_run.push(dom_child);
@@ -150,7 +165,6 @@ impl<'a, M: TextMeasurer + ?Sized> LayoutContext<'a, M> {
                 }
 
                 if let Some(block_fragment) = self.layout_node(dom_child, *child_space, arena) {
-                    let child_margin = child_style.margin;
                     current_y_cursor += child_margin.top;
 
                     let new_origin = PhysicalOffset::new(
