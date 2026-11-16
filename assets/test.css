@@ -97,7 +97,7 @@ div.content .featured {
 }
 
 div.content .featured p {
-    margin: 8px 0px;
+    margin: 8px 0;
     padding: 6px;
     border: 1px solid black;
 }
