@@ -3,16 +3,15 @@ div#app-root {
     margin: 16px;
     padding: 12px;
     border: 4px solid black;
-    /* Height is left auto to test bottom-up shrink-wrapping */
 }
 
 .header {
-    width: 736px; /* 736 + 20px horizontal padding + 4px horizontal border = 760px */
-    height: 60px; /* 60 + 16px vertical padding + 4px vertical border = 80px */
+    width: 736px;
+    height: 60px;
     display: block;
     margin-bottom: 12px;
     padding: 8px 10px;
-    border: 2px solid navy;
+    border: 2px solid blue;
 }
 
 .logo {
@@ -21,7 +20,7 @@ div#app-root {
     display: inline-block;
     margin-right: 12px;
     padding: 6px 8px;
-    border: 2px solid crimson;
+    border: 2px solid red;
 }
 
 .nav-item {
@@ -30,7 +29,7 @@ div#app-root {
     display: inline-block;
     margin-right: 8px;
     padding: 6px 8px;
-    border: 2px solid teal;
+    border: 2px solid green;
 }
 
 .hidden-element {
@@ -38,30 +37,23 @@ div#app-root {
     height: 500px;
     margin: 50px;
     padding: 50px;
-    border: 10px solid magenta;
-    display: none; /* Should completely disappear from the layout tree */
+    border: 10px solid red;
+    display: none;
 }
 
 .main-layout {
     display: block;
     padding: 6px;
-    border: 2px dashed gray;
-    /* Width inherits from app-root, height is auto */
+    border: 2px solid gray;
 }
 
-/*
- * Testing Inline flow for columns.
- * Sidebar (180 + 16 pad + 4 border + 8 margin = 208px)
- * Content (500 + 16 pad + 4 border = 520px)
- * Total = 728px (+ ~4px inline whitespace) <= 744px inner width of .main-layout
- */
 .sidebar {
     width: 180px;
     height: 500px;
     display: inline-block;
     margin-right: 8px;
     padding: 8px;
-    border: 2px solid purple;
+    border: 2px solid blue;
 }
 
 .content {
@@ -69,7 +61,7 @@ div#app-root {
     height: 500px;
     display: inline-block;
     padding: 8px;
-    border: 2px solid darkgreen;
+    border: 2px solid green;
 }
 
 .menu-link {
@@ -78,24 +70,24 @@ div#app-root {
     display: block;
     margin-bottom: 10px;
     padding: 6px 10px;
-    border: 2px solid orange;
+    border: 2px solid gray;
 }
 
 /* Specificity override test */
 div.sidebar .active {
     height: 60px;
     border-width: 2px 4px;
-    border-style: solid solid solid double;
+    border-style: solid;
     border-color: blue red;
 }
 
 .article-card {
-    width: 472px; /* Fits inside 500px .content width with padding & border */
+    width: 472px;
     height: 110px;
     display: block;
     margin-bottom: 12px;
     padding: 10px 12px;
-    border: 2px solid steelblue;
+    border: 2px solid blue;
 }
 
 /* Descendant selector override */
@@ -107,5 +99,5 @@ div.content .featured {
 div.content .featured p {
     margin: 8px 0px;
     padding: 6px;
-    border: 1px dashed black;
+    border: 1px solid black;
 }

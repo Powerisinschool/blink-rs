@@ -6,8 +6,8 @@ use blink_render::{RenderOptions, render_to_png_with_options};
 use blink_svg::render_to_svg;
 use std::fs;
 
-const OUTPUT_WIDTH: u32 = 800;
-const OUTPUT_HEIGHT: u32 = 600;
+const OUTPUT_WIDTH: u32 = 900;
+const OUTPUT_HEIGHT: u32 = 750;
 
 fn main() {
     let html_input =
