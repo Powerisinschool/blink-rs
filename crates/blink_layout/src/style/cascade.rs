@@ -283,10 +283,28 @@ fn parse_border_color(value: &str) -> Option<Option<Color>> {
             b: 0,
             a: 255,
         },
+        "silver" => Color {
+            r: 192,
+            g: 192,
+            b: 192,
+            a: 255,
+        },
+        "gray" | "grey" => Color {
+            r: 128,
+            g: 128,
+            b: 128,
+            a: 255,
+        },
         "white" => Color {
             r: 255,
             g: 255,
             b: 255,
+            a: 255,
+        },
+        "maroon" => Color {
+            r: 128,
+            g: 0,
+            b: 0,
             a: 255,
         },
         "red" => Color {
@@ -295,10 +313,46 @@ fn parse_border_color(value: &str) -> Option<Option<Color>> {
             b: 0,
             a: 255,
         },
+        "purple" => Color {
+            r: 128,
+            g: 0,
+            b: 128,
+            a: 255,
+        },
+        "fuchsia" | "magenta" => Color {
+            r: 255,
+            g: 0,
+            b: 255,
+            a: 255,
+        },
         "green" => Color {
             r: 0,
             g: 128,
             b: 0,
+            a: 255,
+        },
+        "lime" => Color {
+            r: 0,
+            g: 255,
+            b: 0,
+            a: 255,
+        },
+        "olive" => Color {
+            r: 128,
+            g: 128,
+            b: 0,
+            a: 255,
+        },
+        "yellow" => Color {
+            r: 255,
+            g: 255,
+            b: 0,
+            a: 255,
+        },
+        "navy" => Color {
+            r: 0,
+            g: 0,
+            b: 128,
             a: 255,
         },
         "blue" => Color {
@@ -306,6 +360,30 @@ fn parse_border_color(value: &str) -> Option<Option<Color>> {
             g: 0,
             b: 255,
             a: 255,
+        },
+        "teal" => Color {
+            r: 0,
+            g: 128,
+            b: 128,
+            a: 255,
+        },
+        "aqua" | "cyan" => Color {
+            r: 0,
+            g: 255,
+            b: 255,
+            a: 255,
+        },
+        "orange" => Color {
+            r: 255,
+            g: 165,
+            b: 0,
+            a: 255,
+        }, // CSS 2.1 addition
+        "transparent" => Color {
+            r: 0,
+            g: 0,
+            b: 0,
+            a: 0,
         },
         _ => return None,
     };

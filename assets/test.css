@@ -11,7 +11,7 @@ div#app-root {
     display: block;
     margin-bottom: 12px;
     padding: 8px 10px;
-    border: 2px solid blue;
+    border: 2px solid navy;
 }
 
 .logo {
@@ -20,7 +20,7 @@ div#app-root {
     display: inline-block;
     margin-right: 12px;
     padding: 6px 8px;
-    border: 2px solid red;
+    border: 2px solid maroon;
 }
 
 .nav-item {
@@ -29,7 +29,7 @@ div#app-root {
     display: inline-block;
     margin-right: 8px;
     padding: 6px 8px;
-    border: 2px solid green;
+    border: 2px solid teal;
 }
 
 .hidden-element {
@@ -37,7 +37,7 @@ div#app-root {
     height: 500px;
     margin: 50px;
     padding: 50px;
-    border: 10px solid red;
+    border: 10px solid fuchsia;
     display: none;
 }
 
@@ -53,7 +53,7 @@ div#app-root {
     display: inline-block;
     margin-right: 8px;
     padding: 8px;
-    border: 2px solid blue;
+    border: 2px solid purple;
 }
 
 .content {
@@ -70,7 +70,7 @@ div#app-root {
     display: block;
     margin-bottom: 10px;
     padding: 6px 10px;
-    border: 2px solid gray;
+    border: 2px solid orange;
 }
 
 /* Specificity override test */
@@ -87,7 +87,7 @@ div.sidebar .active {
     display: block;
     margin-bottom: 12px;
     padding: 10px 12px;
-    border: 2px solid blue;
+    border: 2px solid olive;
 }
 
 /* Descendant selector override */
