@@ -1,5 +1,5 @@
 use crate::geom::{PhysicalOffset, PhysicalRect, PhysicalSize};
-use crate::style::ComputedStyleId;
+use crate::style::{ComputedStyle, ComputedStyleId, StyleCache};
 use blink_dom::DomNodeId;
 use std::fmt;
 use std::fmt::Formatter;
@@ -15,7 +15,7 @@ pub enum FragmentKind {
 
 pub struct LayoutFragment {
     pub dom_node: Option<DomNodeId>,
-    pub style: Option<ComputedStyleId>,
+    style: Option<ComputedStyleId>,
     rect: PhysicalRect,
     pub kind: FragmentKind,
 
@@ -60,6 +60,17 @@ impl LayoutFragment {
     pub fn with_origin(mut self, origin: PhysicalOffset) -> Self {
         self.rect.origin = origin;
         self
+    }
+
+    pub fn get_style_from_cache<'a>(
+        &self,
+        style_cache: &'a StyleCache,
+    ) -> Option<&'a ComputedStyle> {
+        self.style.and_then(|style_id| style_cache.get(style_id))
+    }
+
+    pub fn style_id(&self) -> Option<ComputedStyleId> {
+        self.style
     }
 
     #[must_use]

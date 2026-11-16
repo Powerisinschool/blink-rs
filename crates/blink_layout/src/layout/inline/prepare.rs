@@ -68,7 +68,7 @@ pub(crate) fn prepare_inline_items<T: TextMeasurer + ?Sized>(
             && let Some(fragment) = layout_atomic_inline(item.dom_node, max_width, ctx, arena)
         {
             let margin = fragment
-                .style
+                .style_id()
                 .and_then(|style_id| ctx.style_cache.get(style_id))
                 .map(|s| s.margin)
                 .unwrap_or_default();

@@ -58,7 +58,7 @@ fn build_line_fragments<M: TextMeasurer + ?Sized>(
                 }
                 PreparedInlineItemKind::AtomicInline { fragment } => {
                     let margin = fragment
-                        .style
+                        .style_id()
                         .and_then(|style_id| ctx.style_cache.get(style_id))
                         .map(|s| s.margin)
                         .unwrap_or_default();

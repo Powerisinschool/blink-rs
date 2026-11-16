@@ -2,7 +2,7 @@ use blink_css::{CSSStyleSheet, parse_css_into_stylesheet};
 use blink_html::parse_html;
 use blink_layout::layout::{ConstraintSpace, FontdueMeasurer, LayoutContext};
 use blink_layout::style::StyleCache;
-use blink_render::render_to_png;
+use blink_render::{RenderOptions, render_to_png_with_options};
 use blink_svg::render_to_svg;
 use std::fs;
 
@@ -56,14 +56,20 @@ fn main() {
     // println!();
     // println!("Fragment arena: {:#?}", arena);
 
+    let debug_wireframes = std::env::var_os("DEBUG_WIREFRAMES").is_some();
+
     // Output the rendered image
-    render_to_png(
-        font,
-        font_size,
+    render_to_png_with_options(
         &arena,
+        &ctx.style_cache,
         OUTPUT_WIDTH,
         OUTPUT_HEIGHT,
         "output.png",
+        RenderOptions {
+            font,
+            font_size,
+            debug_wireframes,
+        },
     )
     .unwrap();
     println!("Phase 1 pipeline executed successfully! Frame written to output.png");

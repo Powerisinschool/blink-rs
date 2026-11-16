@@ -25,7 +25,7 @@ impl<'a, M: TextMeasurer + ?Sized> LayoutContext<'a, M> {
         let root_fragment_id =
             if let Some(fragment) = self.layout_node(root_id, initial_space, &mut arena) {
                 let margin = fragment
-                    .style
+                    .style_id()
                     .and_then(|style_id| self.style_cache.get(style_id))
                     .map(|s| s.margin)
                     .unwrap_or_default();

@@ -84,11 +84,21 @@ pub enum BorderStyle {
     Solid,
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct BorderSide {
     pub color: Option<Color>,
     pub width: f32,
     pub style: BorderStyle,
+}
+
+impl Default for BorderSide {
+    fn default() -> Self {
+        BorderSide {
+            color: None,
+            width: f32::NAN,
+            style: BorderStyle::None,
+        }
+    }
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
@@ -136,7 +146,7 @@ impl<T: std::ops::Add<Output = T>> std::ops::Add for EdgeSizes<T> {
 impl EdgeSizes<BorderSide> {
     pub fn widths(self) -> EdgeSizes<f32> {
         let effective = |s: BorderSide| {
-            if s.style == BorderStyle::None {
+            if s.style == BorderStyle::None || s.width.is_nan() {
                 0.0
             } else {
                 s.width
