@@ -1,0 +1,26 @@
+.wrapper {
+    width: 400px;
+    margin: 10px 20px;
+    padding: 15px;
+    border: 5px solid black;
+}
+
+.card {
+    margin-bottom: 12px;
+    padding: 8px 10px;
+    border-width: 2px 4px;
+    border-style: solid none solid solid;
+    border-color: red blue;
+}
+
+.second {
+    margin-top: 6px;
+    margin-bottom: 0px;
+}
+
+.badge {
+    display: inline-block;
+    margin: 2px 4px;
+    padding: 4px 6px;
+    border: 1px solid green;
+}

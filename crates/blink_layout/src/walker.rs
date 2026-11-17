@@ -1,4 +1,4 @@
-use crate::fragment::{FragmentArena, LayoutFragment, LayoutFragmentId};
+use super::layout::fragment::{FragmentArena, LayoutFragment, LayoutFragmentId};
 use crate::geom::PhysicalOffset;
 
 pub trait Renderer {
@@ -43,18 +43,18 @@ impl FragmentWalker {
                 break;
             };
 
-            let abs_origin = parent_offset + *fragment.get_origin();
+            let abs_origin = parent_offset + *fragment.origin();
             let child_ctx = renderer.begin_fragment(fragment, abs_origin, initial_ctx);
 
             renderer.paint_fragment(fragment, abs_origin, &child_ctx);
 
-            if let Some(child_id) = fragment.get_first_child() {
+            if let Some(child_id) = fragment.first_child() {
                 Self::walk(arena, child_id, renderer, &child_ctx, abs_origin);
             }
 
             renderer.end_fragment(fragment, abs_origin, &child_ctx);
 
-            current_id_opt = fragment.get_next_sibling();
+            current_id_opt = fragment.next_sibling();
         }
     }
 }

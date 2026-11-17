@@ -38,7 +38,7 @@ impl TreeSink for HtmlDom {
     }
 
     fn get_document(&self) -> Self::Handle {
-        self.0.borrow().get_root_node_id()
+        self.0.borrow().root_node_id()
     }
 
     fn elem_name<'a>(&'a self, target: &'a Self::Handle) -> ExpandedName<'a> {
@@ -309,7 +309,7 @@ mod tests {
         let dom = parse_html(html);
 
         // Check that the root node has one child (the div)
-        let document = dom.get_root_node_id();
+        let document = dom.root_node_id();
         let html_id = dom
             .get_first_child(document)
             .expect("Document should have a child (html)");

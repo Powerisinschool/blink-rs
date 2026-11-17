@@ -6,7 +6,7 @@ An experimental web rendering engine in Rust, focused on the **DOM → style →
 >
 > This is an independent project. It is not affiliated with Google or the Chromium project; Blink and LayoutNG are used as architectural references only.
 
-![Phase 1.5 output: fragment boundaries for assets/test.html](docs/phase1.5-output.png)
+![Phase 3 output: standard render for assets/test.html](docs/phase3-output.png)
 
 *Wireframe of the layout fragments produced from [`assets/test.html`](assets/test.html) and [`assets/test.css`](assets/test.css).*
 
@@ -150,7 +150,7 @@ BLESS=1 cargo test -p blink_layout --test golden_layout
 
 - [x] Immutable `ConstraintSpace` passed down the tree
 - [x] Immutable physical fragment tree
-- [ ] Margin, padding, and border (box model)
+- [x] Margin, padding, and border (box model)
 - [ ] Incremental layout and caching driven by invalidation boundaries
 
 ### Phase 4: Binding and reactive layer

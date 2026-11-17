@@ -1,10 +1,14 @@
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub struct PhysicalSize {
     pub width: f32,
     pub height: f32,
 }
 
 impl PhysicalSize {
+    pub fn new(width: f32, height: f32) -> Self {
+        Self { width, height }
+    }
+
     #[must_use]
     pub fn with_width(mut self, width: f32) -> Self {
         self.width = width;
@@ -36,7 +40,7 @@ impl From<(u32, u32)> for PhysicalSize {
     }
 }
 
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub struct PhysicalOffset {
     pub x: f32,
     pub y: f32,
@@ -71,28 +75,10 @@ impl std::ops::Add for PhysicalOffset {
     }
 }
 
-impl PartialEq<(f32, f32)> for PhysicalOffset {
-    fn eq(&self, other: &(f32, f32)) -> bool {
-        self.x == other.0 && self.y == other.1
-    }
-}
-
-impl PartialEq<PhysicalOffset> for (f32, f32) {
-    fn eq(&self, other: &PhysicalOffset) -> bool {
-        self.0 == other.x && self.1 == other.y
-    }
-}
-
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub struct PhysicalRect {
     pub origin: PhysicalOffset,
     pub size: PhysicalSize,
-}
-
-impl PhysicalSize {
-    pub fn new(width: f32, height: f32) -> Self {
-        Self { width, height }
-    }
 }
 
 impl PhysicalRect {

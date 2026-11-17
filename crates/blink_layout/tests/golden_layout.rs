@@ -11,9 +11,10 @@
 use blink_css::{CSSStyleSheet, parse_css_into_stylesheet};
 use blink_dom::{Dom, get_tag_name};
 use blink_html::parse_html;
-use blink_layout::engine::{LayoutContext, build_layout_tree};
-use blink_layout::fragment::{FragmentArena, LayoutFragmentId};
-use blink_layout::space::ConstraintSpace;
+use blink_layout::layout::ConstraintSpace;
+use blink_layout::layout::LayoutContext;
+use blink_layout::layout::{FragmentArena, LayoutFragmentId};
+use blink_layout::style::StyleCache;
 use std::env;
 use std::fmt::Write;
 use std::fs;
@@ -32,10 +33,11 @@ fn layout_fixture(html: &str, css: &str) -> (Dom, FragmentArena) {
     let mut ctx = LayoutContext {
         dom: &dom,
         stylesheet: &stylesheet,
-        text_measurer: Box::new(blink_layout::text::FixedWidth {}),
+        text_measurer: &blink_layout::layout::FixedWidth {},
+        style_cache: StyleCache::new(dom.nodes_len()), // Initialize StyleCache with the number of nodes in the DOM
     };
 
-    let arena = build_layout_tree(dom.get_root_node_id(), &mut ctx, space);
+    let arena = ctx.build_layout_tree(dom.root_node_id(), space);
 
     (dom, arena)
 }
@@ -89,8 +91,8 @@ fn dump_node(
     let fragment = &arena
         .get_fragment(fragment_id)
         .expect("fragment index out of bounds");
-    let abs_x = parent_x + fragment.get_origin().x;
-    let abs_y = parent_y + fragment.get_origin().y;
+    let abs_x = parent_x + fragment.origin().x;
+    let abs_y = parent_y + fragment.origin().y;
 
     let name = fragment
         .dom_node
@@ -104,15 +106,15 @@ fn dump_node(
         name,
         abs_x,
         abs_y,
-        fragment.get_width(),
-        fragment.get_height(),
+        fragment.width(),
+        fragment.height(),
     )
     .unwrap();
 
-    let mut child = fragment.get_first_child();
+    let mut child = fragment.first_child();
     while let Some(child_id) = child {
         dump_node(dom, arena, child_id, depth + 1, abs_x, abs_y, out);
-        child = arena.get_fragment(child_id).unwrap().get_next_sibling();
+        child = arena.get_fragment(child_id).unwrap().next_sibling();
     }
 }
 
@@ -172,4 +174,9 @@ fn nested_inline() {
 #[test]
 fn display_none() {
     assert_golden("display_none");
+}
+
+#[test]
+fn box_model() {
+    assert_golden("box_model");
 }

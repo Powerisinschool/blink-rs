@@ -1,14 +1,13 @@
 use blink_css::{CSSStyleSheet, parse_css_into_stylesheet};
 use blink_html::parse_html;
-use blink_layout::engine::build_layout_tree;
-use blink_layout::space::ConstraintSpace;
-use blink_layout::text::FontdueMeasurer;
-use blink_render::render_to_png;
+use blink_layout::layout::{ConstraintSpace, FontdueMeasurer, LayoutContext};
+use blink_layout::style::StyleCache;
+use blink_render::{RenderOptions, render_to_png_with_options};
 use blink_svg::render_to_svg;
 use std::fs;
 
-const OUTPUT_WIDTH: u32 = 800;
-const OUTPUT_HEIGHT: u32 = 600;
+const OUTPUT_WIDTH: u32 = 900;
+const OUTPUT_HEIGHT: u32 = 750;
 
 fn main() {
     let html_input =
@@ -41,29 +40,36 @@ fn main() {
     // Calculate layout boundaries
     let initial_space = ConstraintSpace::from((OUTPUT_WIDTH, OUTPUT_HEIGHT));
 
-    let root_id = output_dom.get_root_node_id();
+    let root_id = output_dom.root_node_id();
 
-    let mut ctx = blink_layout::engine::LayoutContext {
+    let mut ctx = LayoutContext {
         dom: &output_dom,
         stylesheet: &stylesheet,
-        text_measurer: Box::new(FontdueMeasurer {
+        text_measurer: &FontdueMeasurer {
             font: font.clone(),
             font_size,
-        }),
+        },
+        style_cache: StyleCache::new(output_dom.nodes_len()), // Initialize StyleCache with the number of nodes in the DOM
     };
-    let arena = build_layout_tree(root_id, &mut ctx, initial_space);
+    let arena = ctx.build_layout_tree(root_id, initial_space);
 
     // println!();
     // println!("Fragment arena: {:#?}", arena);
 
+    let debug_wireframes = std::env::var_os("DEBUG_WIREFRAMES").is_some();
+
     // Output the rendered image
-    render_to_png(
-        font,
-        font_size,
+    render_to_png_with_options(
         &arena,
+        &ctx.style_cache,
         OUTPUT_WIDTH,
         OUTPUT_HEIGHT,
         "output.png",
+        RenderOptions {
+            font,
+            font_size,
+            debug_wireframes,
+        },
     )
     .unwrap();
     println!("Phase 1 pipeline executed successfully! Frame written to output.png");

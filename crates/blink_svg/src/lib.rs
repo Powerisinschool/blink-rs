@@ -1,5 +1,5 @@
-use blink_layout::fragment::{FragmentArena, FragmentKind, LayoutFragment};
 use blink_layout::geom::PhysicalOffset;
+use blink_layout::layout::{FragmentArena, FragmentKind, LayoutFragment};
 use blink_layout::walker::{FragmentWalker, Renderer};
 
 pub struct SvgRenderer {
@@ -51,8 +51,8 @@ impl Renderer for SvgRenderer {
     ) {
         let x = abs_origin.x;
         let y = abs_origin.y;
-        let width = fragment.get_width();
-        let height = fragment.get_height();
+        let width = fragment.width();
+        let height = fragment.height();
 
         match &fragment.kind {
             FragmentKind::Box => {

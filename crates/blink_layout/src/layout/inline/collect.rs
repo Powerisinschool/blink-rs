@@ -1,6 +1,7 @@
-use crate::engine::LayoutContext;
-use crate::fragment::LayoutFragment;
-use crate::style::{DisplayInside, DisplayOutside, compute_style};
+use super::super::engine::LayoutContext;
+use super::super::fragment::LayoutFragment;
+use super::super::text::TextMeasurer;
+use crate::style::{DisplayInside, DisplayOutside};
 use blink_dom::DomNodeId;
 
 #[derive(Debug, PartialEq, Clone)]
@@ -17,9 +18,9 @@ pub struct InlineItem {
 }
 
 impl InlineItem {
-    pub fn is_text(&self) -> bool {
-        matches!(self.kind, InlineItemKind::Text(_))
-    }
+    // pub fn is_text(&self) -> bool {
+    //     matches!(self.kind, InlineItemKind::Text(_))
+    // }
 
     pub fn is_atomic_inline(&self) -> bool {
         matches!(self.kind, InlineItemKind::AtomicInline)
@@ -45,63 +46,42 @@ impl InlineItem {
         }
     }
 
-    pub fn append_text(&mut self, additional_text: &str) {
-        if let InlineItemKind::Text(ref mut text) = self.kind {
-            text.push_str(additional_text);
-        }
-    }
+    // pub fn append_text(&mut self, additional_text: &str) {
+    //     if let InlineItemKind::Text(ref mut text) = self.kind {
+    //         text.push_str(additional_text);
+    //     }
+    // }
 }
 
-pub enum PreparedInlineItemKind {
+pub enum PreparedInlineItemKind<T = LayoutFragment> {
     TextSegment {
         dom_node: DomNodeId,
         text: String,
         // range: Range<usize>,
     },
     AtomicInline {
-        fragment: LayoutFragment,
+        fragment: T,
     },
     ForcedBreak,
 }
 
-pub struct PreparedInlineItem {
-    pub kind: PreparedInlineItemKind,
+pub struct PreparedInlineItem<T = LayoutFragment> {
+    pub kind: PreparedInlineItemKind<T>,
     pub width: f32,
     pub fit_width: f32,
     pub height: f32,
 }
 
-impl PreparedInlineItem {
-    pub fn is_atomic_inline(&self) -> bool {
-        matches!(self.kind, PreparedInlineItemKind::AtomicInline { .. })
-    }
-
+impl<T> PreparedInlineItem<T> {
     pub fn is_forced_break(&self) -> bool {
         matches!(self.kind, PreparedInlineItemKind::ForcedBreak)
     }
-
-    pub fn is_text_segment(&self) -> bool {
-        matches!(self.kind, PreparedInlineItemKind::TextSegment { .. })
-    }
-
-    pub fn get_text_segment(&self) -> Option<(&DomNodeId, &String)> {
-        if let PreparedInlineItemKind::TextSegment { dom_node, text } = &self.kind {
-            Some((dom_node, text))
-        } else {
-            None
-        }
-    }
-
-    pub fn get_atomic_inline_fragment(&self) -> Option<&LayoutFragment> {
-        if let PreparedInlineItemKind::AtomicInline { fragment } = &self.kind {
-            Some(fragment)
-        } else {
-            None
-        }
-    }
 }
 
-pub fn collect_inline_items(run: &[DomNodeId], ctx: &LayoutContext) -> Vec<InlineItem> {
+pub fn collect_inline_items<M: TextMeasurer + ?Sized>(
+    run: &[DomNodeId],
+    ctx: &mut LayoutContext<M>,
+) -> Vec<InlineItem> {
     let mut items = Vec::new();
     let mut last_was_space = true;
 
@@ -113,9 +93,9 @@ pub fn collect_inline_items(run: &[DomNodeId], ctx: &LayoutContext) -> Vec<Inlin
     items
 }
 
-pub fn collect_recursive(
+pub fn collect_recursive<M: TextMeasurer + ?Sized>(
     node_id: DomNodeId,
-    ctx: &LayoutContext,
+    ctx: &mut LayoutContext<M>,
     items: &mut Vec<InlineItem>,
     last_was_space: &mut bool,
 ) {
@@ -131,7 +111,9 @@ pub fn collect_recursive(
         return; // Text nodes are leaf nodes, so we can return early
     }
 
-    let style = compute_style(node_id, ctx.dom, ctx.stylesheet);
+    let (_, style) = ctx
+        .style_cache
+        .get_or_compute(node_id, ctx.dom, ctx.stylesheet);
 
     if style.display.is_none() {
         return;
@@ -223,8 +205,9 @@ pub fn strip_trailing_space(items: &mut Vec<InlineItem>) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use super::super::super::text::FixedWidth;
     use super::*;
-    use crate::text::FixedWidth;
+    use crate::style::StyleCache;
     use blink_css::CSSStyleSheet;
     use blink_dom::{Dom, get_tag_index};
 
@@ -246,13 +229,14 @@ mod tests {
         let mut dom = Dom::new();
         let text_id = dom.add_text("  Hello \n   world  ");
 
-        let ctx = LayoutContext {
+        let mut ctx = LayoutContext {
             dom: &dom,
             stylesheet: &CSSStyleSheet::new(),
-            text_measurer: Box::new(FixedWidth {}),
+            text_measurer: &FixedWidth {},
+            style_cache: StyleCache::default(),
         };
 
-        let items = collect_inline_items(&[text_id], &ctx);
+        let items = collect_inline_items(&[text_id], &mut ctx);
 
         // Leading and trailing space dropped, internal whitespace flattened
         assert_eq!(get_text_strings(&items), vec!["Hello world"]);
@@ -264,13 +248,14 @@ mod tests {
         let t1 = dom.add_text("Hello ");
         let t2 = dom.add_text(" world"); // Leading space here should collapse
 
-        let ctx = LayoutContext {
+        let mut ctx = LayoutContext {
             dom: &dom,
             stylesheet: &CSSStyleSheet::new(),
-            text_measurer: Box::new(FixedWidth {}),
+            text_measurer: &FixedWidth {},
+            style_cache: StyleCache::default(),
         };
 
-        let items = collect_inline_items(&[t1, t2], &ctx);
+        let items = collect_inline_items(&[t1, t2], &mut ctx);
 
         // State machine keeps `last_was_space=true` across node boundaries
         assert_eq!(get_text_strings(&items), vec!["Hello ", "world"]);
@@ -296,13 +281,14 @@ mod tests {
         dom.set_parent(t2, span).unwrap();
         dom.set_first_child(span, Some(t2)).unwrap();
 
-        let ctx = LayoutContext {
+        let mut ctx = LayoutContext {
             dom: &dom,
             stylesheet: &CSSStyleSheet::new(),
-            text_measurer: Box::new(FixedWidth {}),
+            text_measurer: &FixedWidth {},
+            style_cache: StyleCache::default(),
         };
 
-        let items = collect_inline_items(&[parent], &ctx);
+        let items = collect_inline_items(&[parent], &mut ctx);
 
         println!("Items: {:?}", items);
         println!("Text Strings: {:?}", get_text_strings(&items));
@@ -318,13 +304,14 @@ mod tests {
         let br = dom.add_element(get_tag_index("br"), None);
         let t2 = dom.add_text(" world");
 
-        let ctx = LayoutContext {
+        let mut ctx = LayoutContext {
             dom: &dom,
             stylesheet: &CSSStyleSheet::new(),
-            text_measurer: Box::new(FixedWidth {}),
+            text_measurer: &FixedWidth {},
+            style_cache: StyleCache::default(),
         };
 
-        let items = collect_inline_items(&[t1, br, t2], &ctx);
+        let items = collect_inline_items(&[t1, br, t2], &mut ctx);
 
         // `<br>` strips the trailing space from t1, and makes `last_was_space=true` for t2
         assert_eq!(get_text_strings(&items), vec!["Hello", "<br>", "world"]);
@@ -335,13 +322,14 @@ mod tests {
         let mut dom = Dom::new();
         let t1 = dom.add_text("   \n   \t  ");
 
-        let ctx = LayoutContext {
+        let mut ctx = LayoutContext {
             dom: &dom,
             stylesheet: &CSSStyleSheet::new(),
-            text_measurer: Box::new(FixedWidth {}),
+            text_measurer: &FixedWidth {},
+            style_cache: StyleCache::default(),
         };
 
-        let items = collect_inline_items(&[t1], &ctx);
+        let items = collect_inline_items(&[t1], &mut ctx);
 
         // Fully empty sequences yield no fragments, preventing blank ghost lines
         assert!(items.is_empty());
