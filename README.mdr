@@ -4,7 +4,7 @@
 @theme accent = A78BFA | 6D28D9
 
 @# Repo-specific variables
-@var title = "Blink(e)rs"
+@text title = Blink(e)rs
 @text repo_name = blink-rs
 @text repo_host = github.com
 @text repo_owner = Powerisinschool
