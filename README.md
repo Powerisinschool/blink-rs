@@ -37,21 +37,15 @@
 
 ---
 
-Blink (e)rs takes the single-threaded, constraint-driven layout model of Chromium's LayoutNG as its reference design and
-rebuilds it around a flat, arena-allocated DOM.
+Blink(e)rs takes the single-threaded, constraint-driven layout model of Chromium's LayoutNG as its reference design and rebuilds it around a flat, arena-allocated DOM.
 
-> **Status: pre-alpha, Phases 1, 1.5 and 2 complete; Phase 3 in progress (proof of concept).** The engine supports block
-> and inline layout with the CSS box model (margin, padding and border), basic text measurement, whitespace collapsing,
-> text fragments, line breaking and wrapping, and basic glyph rasterization. It renders to PNG with painted borders, and
-> to SVG. Full text shaping and most CSS features remain unimplemented. See [Current limitations](#current-limitations)
-> and the [Roadmap](#roadmap).
+> **Status: pre-alpha, Phases 1, 1.5 and 2 complete; Phase 3 in progress (proof of concept).** The engine supports block and inline layout with the CSS box model (margin, padding and border), basic text measurement, whitespace collapsing, text fragments, line breaking and wrapping, and basic glyph rasterization. It renders to PNG with painted borders, and to SVG. Full text shaping and most CSS features remain unimplemented. See [Current limitations](#current-limitations) and the [Roadmap](#roadmap).
 >
 > This is an independent project. It is not affiliated with Google or the Chromium project; Blink and LayoutNG are used as architectural references only.
 
 ![Phase 3 output: standard render for assets/test.html](docs/phase3-output.png)
 
-*Standard render of [`assets/test.html`](assets/test.html) and [`assets/test.css`](assets/test.css). Run with
-`DEBUG_WIREFRAMES=1` to overlay fragment outlines.*
+*Standard render of [`assets/test.html`](assets/test.html) and [`assets/test.css`](assets/test.css). Run with `DEBUG_WIREFRAMES=1` to overlay fragment outlines.*
 
 ---
 
@@ -110,32 +104,20 @@ rebuilds it around a flat, arena-allocated DOM.
 - Supported properties:
   - `display` (`block`, `inline`, `inline-block`, `none`)
   - `width` and `height` (`px`), which set the content box
-  - `margin`, `padding` and their per-side longhands, with 1–4 value expansion. Margins may be negative; padding is
-    clamped to 0.
-  - `border`, `border-width`, `border-style`, `border-color` and their per-side longhands. Widths are clamped to 0.
-    Styles: `none`, `hidden`, `solid`. Colors: hex (3, 6 or 8 digits), the CSS 2.1 named colors, `transparent`,
-    `currentcolor`.
-- Each node's computed style is computed once and stored in a shared `StyleCache`. Entries are checked against the
-  node's generation, so they stay valid as the DOM changes. Fragments refer to their style by `ComputedStyleId` rather
-  than owning a copy.
+  - `margin`, `padding` and their per-side longhands, with 1–4 value expansion. Margins may be negative; padding is clamped to 0.
+  - `border`, `border-width`, `border-style`, `border-color` and their per-side longhands. Widths are clamped to 0. Styles: `none`, `hidden`, `solid`. Colors: hex (3, 6 or 8 digits), the CSS 2.1 named colors, `transparent`, `currentcolor`.
+- Each node's computed style is computed once and stored in a shared `StyleCache`. Entries are checked against the node's generation, so they stay valid as the DOM changes. Fragments refer to their style by `ComputedStyleId` rather than owning a copy.
 - A small built-in user-agent default maps tags to a default `display` (for example `div` → block, `head` → none).
 
 #### Layout (`blink_layout::layout`)
 
-- Layout state lives in a `LayoutContext<M: TextMeasurer>`, which holds the DOM, stylesheet, text measurer and style
-  cache. `build_layout_tree` and `layout_node` are methods on it.
-- Layout is a recursive pass over the DOM. For each node it looks up the computed style, prunes `display: none`,
-  resolves size from the parent's `ConstraintSpace`, lays out children, then resolves any auto height.
-- Box model: each fragment's rect is its border box. Children are placed inside the parent's padding and border.
-  `width`/`height` size the content box.
-- Block children stack vertically, separated by their top and bottom margins. Inline children flow left to right on a
-  line whose height is the tallest child; inline-block margins are counted when lines are measured and broken.
-  Auto-width blocks take the available width; auto-width inline boxes shrink-wrap their content.
+- Layout state lives in a `LayoutContext<M: TextMeasurer>`, which holds the DOM, stylesheet, text measurer and style cache. `build_layout_tree` and `layout_node` are methods on it.
+- Layout is a recursive pass over the DOM. For each node it looks up the computed style, prunes `display: none`, resolves size from the parent's `ConstraintSpace`, lays out children, then resolves any auto height.
+- Box model: each fragment's rect is its border box. Children are placed inside the parent's padding and border. `width`/`height` size the content box.
+- Block children stack vertically, separated by their top and bottom margins. Inline children flow left to right on a line whose height is the tallest child; inline-block margins are counted when lines are measured and broken. Auto-width blocks take the available width; auto-width inline boxes shrink-wrap their content.
 - Inline layout is split into `collect`, `prepare`, `line_breaker` and `atomic` stages under `layout/inline/`.
-- Output is a `FragmentArena`: a flat `Vec<LayoutFragment>` with `first_child`/`next_sibling` links, mirroring the DOM's
-  topology. The arena stores fragments and their structural relationships.
-- Fragments are constructed with parent-relative coordinates. Absolute coordinates are resolved during fragment
-  traversal, not by modifying the layout tree.
+- Output is a `FragmentArena`: a flat `Vec<LayoutFragment>` with `first_child`/`next_sibling` links, mirroring the DOM's topology. The arena stores fragments and their structural relationships.
+- Fragments are constructed with parent-relative coordinates. Absolute coordinates are resolved during fragment traversal, not by modifying the layout tree.
 - Fragment geometry and tree relationships are immutable after construction.
 - Unsupported `display` declarations are ignored.
 - Unknown tag names are registered dynamically, but generic tag-name lookup currently falls back to `div`.
@@ -145,8 +127,7 @@ rebuilds it around a flat, arena-allocated DOM.
 - Basic glyph rasterization and fragment rendering are supported.
 - Borders are filled per side using the computed border colors (default black).
 - Fragment wireframes are drawn only when `DEBUG_WIREFRAMES` is set.
-- `render_to_png_with_options` takes the fragment arena, the `StyleCache`, the output size and path, and a
-  `RenderOptions` value (font, font size, debug wireframes).
+- `render_to_png_with_options` takes the fragment arena, the `StyleCache`, the output size and path, and a `RenderOptions` value (font, font size, debug wireframes).
 
 ---
 
@@ -162,8 +143,7 @@ Known gaps, many of which are good places to start contributing (see [CONTRIBUTI
 - No `box-sizing`; `width` and `height` always set the content box.
 - No `auto` margins.
 - Only `px` lengths are parsed (no percentages, `em`, etc.).
-- Only `none`, `hidden` and `solid` borders. Other styles (`dashed`, `dotted`, `double`) make the whole declaration
-  invalid.
+- Only `none`, `hidden` and `solid` borders. Other styles (`dashed`, `dotted`, `double`) make the whole declaration invalid.
 - No `position`, floats, or flexbox.
 - No property inheritance.
 - No child, sibling or attribute selectors, no pseudo-classes, no `!important`.
@@ -194,15 +174,13 @@ cargo test --workspace --features blink_dom/dense-core
 
 Unit tests cover selector matching, specificity, descendant chains, length parsing, and attribute lookup across text and `<br>` nodes.
 
-The golden layout tests cover six fixtures: `basic`, `inline_wrapping`, `mixed_block_inline`, `nested_inline`,
-`display_none`, and `box_model`. Run them with:
+The golden layout tests cover six fixtures: `basic`, `inline_wrapping`, `mixed_block_inline`, `nested_inline`, `display_none`, and `box_model`. Run them with:
 
 ```sh
 cargo test -p blink_layout --test golden_layout
 ```
 
-If you change the layout engine, update the expected rectangles in `crates/blink_layout/tests/fixtures/` and commit
-them. A page that renders "about right" is not a test. To regenerate the expected rectangles for all fixtures, run:
+If you change the layout engine, update the expected rectangles in `crates/blink_layout/tests/fixtures/` and commit them. A page that renders "about right" is not a test. To regenerate the expected rectangles for all fixtures, run:
 
 ```sh
 BLESS=1 cargo test -p blink_layout --test golden_layout
@@ -257,4 +235,4 @@ Contributions are welcome, especially on the items in [Current limitations](#cur
 
 ### License
 
-Blink (e)rs is released under the [MIT License](LICENSE).
+Blink(e)rs is released under the [MIT License](LICENSE).
