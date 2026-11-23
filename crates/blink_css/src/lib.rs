@@ -15,6 +15,7 @@ pub struct CSSStyleRule {
 #[derive(Debug, PartialEq)]
 pub enum Selector {
     PseudoClass(String),
+    PseudoElement(String),
     Tag(String),
     ID(String),
     Class(String),
@@ -41,7 +42,7 @@ impl CSSStyleRule {
             match part {
                 Selector::ID(_) => ids += 1,
                 Selector::Class(_) | Selector::PseudoClass(_) => classes += 1,
-                Selector::Tag(_) => tags += 1,
+                Selector::Tag(_) | Selector::PseudoElement(_) => tags += 1,
                 _ => {}
             }
         }
@@ -87,8 +88,16 @@ fn parse_next_rule(
                 break;
             }
             Token::Colon => {
-                if let Token::Ident(name) = parser.next()? {
-                    selector.push(Selector::PseudoClass(name.to_string()));
+                match parser.next()? {
+                    Token::Colon => {
+                        if let Token::Ident(name) = parser.next()? {
+                            selector.push(Selector::PseudoElement(name.to_string()));
+                        }
+                    }
+                    Token::Ident(name) => {
+                        selector.push(Selector::PseudoClass(name.to_string()));
+                    }
+                    _ => {} // Ignore invalid pseudo-class syntax
                 }
             }
             Token::Ident(name) => selector.push(Selector::Tag(name.to_string())),

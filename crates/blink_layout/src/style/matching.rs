@@ -106,6 +106,10 @@ fn match_compound(node_id: DomNodeId, dom: &Dom, parts: &[Selector]) -> bool {
                     _ => return false, // Unsupported pseudo-class
                 }
             }
+            Selector::PseudoElement(_name) => {
+                // Pseudo-elements are not supported in this matching logic
+                todo!();
+            }
             Selector::Descendant => unreachable!("Descendants are handled by match_parts"),
         }
     }
