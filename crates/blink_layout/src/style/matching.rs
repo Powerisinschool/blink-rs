@@ -131,16 +131,15 @@ fn match_compound(node_id: DomNodeId, dom: &Dom, parts: &[Selector]) -> bool {
                                 .expect("Parent should at least have us as a child");
                             let mut nth_child = first_child;
 
-                            for _ in 2..n {
+                            for _ in 1..n {
                                 if nth_child == node_id {
                                     return false; // Return false if we reach the node before reaching the nth child
                                 }
 
-                                nth_child = if let Some(sibling) = dom.get_next_sibling(nth_child) {
-                                    sibling
-                                } else {
+                                let Some(sibling) = next_element_sibling(nth_child, dom) else {
                                     return false; // Not enough siblings to reach nth-child
-                                }
+                                };
+                                nth_child = sibling;
                             }
 
                             if nth_child != node_id {
@@ -157,6 +156,16 @@ fn match_compound(node_id: DomNodeId, dom: &Dom, parts: &[Selector]) -> bool {
         }
     }
     true
+}
+
+fn next_element_sibling(mut id: DomNodeId, dom: &Dom) -> Option<DomNodeId> {
+    while let Some(next) = dom.get_next_sibling(id) {
+        if dom.get_node(next).is_some_and(|n| n.is_element()) {
+            return Some(next);
+        }
+        id = next;
+    }
+    None
 }
 
 fn is_document_element(node_id: DomNodeId, dom: &Dom) -> bool {
@@ -214,7 +223,7 @@ pub(super) mod tests {
             .expect("Failed to set first child");
         dom.set_parent(div_node, root_node)
             .expect("Failed to set parent");
-        dom.set_first_child(root_node, Some(p_node))
+        dom.set_first_child(root_node, Some(div_node))
             .expect("Failed to set first child");
 
         let rule_root = get_first_rule(":root { font-size: 16px; }");
