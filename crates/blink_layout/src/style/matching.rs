@@ -99,7 +99,7 @@ fn match_compound(node_id: DomNodeId, dom: &Dom, parts: &[Selector]) -> bool {
             Selector::PseudoClass(name) => {
                 match name.as_str() {
                     "root" => {
-                        if node_id != dom.root_node_id() {
+                        if !is_document_element(node_id, dom) {
                             return false;
                         }
                     }
@@ -159,6 +159,17 @@ fn match_compound(node_id: DomNodeId, dom: &Dom, parts: &[Selector]) -> bool {
     true
 }
 
+fn is_document_element(node_id: DomNodeId, dom: &Dom) -> bool {
+    let Some(node) = dom.get_node(node_id) else {
+        return false;
+    };
+    if !node.is_element() || node.get_tag() == Some(0) {
+        return false;
+    }
+    dom.get_parent(node_id)
+        .is_some_and(|parent| dom.get_tag(parent) == Some(0))
+}
+
 #[cfg(test)]
 pub(super) mod tests {
     use super::*;
@@ -189,6 +200,8 @@ pub(super) mod tests {
         dom.ensure_tag_registered(DIV_TAG_INDEX);
         dom.ensure_tag_registered(P_TAG_INDEX);
 
+        let root_node = dom.add_element(0, None); // Root node with tag index 0
+
         let div_attrs = vec![make_attr("id", "main")].into_boxed_slice();
         let div_node = dom.add_element(DIV_TAG_INDEX, Some(div_attrs));
 
@@ -198,6 +211,10 @@ pub(super) mod tests {
         dom.set_parent(p_node, div_node)
             .expect("Failed to set parent");
         dom.set_first_child(div_node, Some(p_node))
+            .expect("Failed to set first child");
+        dom.set_parent(div_node, root_node)
+            .expect("Failed to set parent");
+        dom.set_first_child(root_node, Some(p_node))
             .expect("Failed to set first child");
 
         let rule_root = get_first_rule(":root { font-size: 16px; }");

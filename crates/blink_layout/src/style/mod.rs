@@ -164,7 +164,13 @@ mod tests {
         let mut dom = Dom::new();
         dom.ensure_tag_registered(DIV_TAG_INDEX);
 
+        let root_node = dom.add_element(0, None); // Root node with tag index 0
         let div_node = dom.add_element(DIV_TAG_INDEX, None);
+
+        dom.set_parent(div_node, root_node)
+            .expect("Failed to set parent");
+        dom.set_first_child(root_node, Some(div_node))
+            .expect("Failed to set first child");
 
         let mut stylesheet = CSSStyleSheet::new();
         let css = "
