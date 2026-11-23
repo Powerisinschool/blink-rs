@@ -1,8 +1,9 @@
 use super::types::{BorderSide, BorderStyle, Color, ComputedStyle, Display, EdgeSizes};
-use blink_css::CSSStyleRule;
+use blink_css::{CSSStyleRule, CSSStyleSheet};
 
 pub(super) fn cascade_properties(
     matched_rules: &mut Vec<&CSSStyleRule>,
+    stylesheet: &CSSStyleSheet,
     display: Display,
 ) -> ComputedStyle {
     matched_rules.sort_by_key(|a| a.specificity());
@@ -10,7 +11,11 @@ pub(super) fn cascade_properties(
     let mut style = ComputedStyle::new(display, None, None);
 
     for rule in matched_rules {
-        let props = &rule.properties;
+        let props = if let Some(props) = rule.properties(stylesheet) {
+            props
+        } else {
+            continue; // Skip rules without properties
+        };
 
         if let Some(d) = props.get("display").and_then(|v| parse_display(v)) {
             style.display = d;

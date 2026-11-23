@@ -110,6 +110,49 @@ fn match_compound(node_id: DomNodeId, dom: &Dom, parts: &[Selector]) -> bool {
                 // Pseudo-elements are not supported in this matching logic
                 todo!();
             }
+            Selector::Function(name, args) => {
+                match name.as_str() {
+                    "nth-child" => {
+                        if args.len() != 1 {
+                            return false; // Invalid number of arguments
+                        }
+                        let n = args[0].parse::<usize>().ok();
+                        if let Some(n) = n {
+                            if n == 0 {
+                                return false; // Indexes from 1
+                            }
+
+                            let parent_id = match dom.get_parent(node_id) {
+                                Some(pid) => pid,
+                                None => return false,
+                            };
+                            let first_child = dom
+                                .get_first_child(parent_id)
+                                .expect("Parent should at least have us as a child");
+                            let mut nth_child = first_child;
+
+                            for _ in 2..n {
+                                if nth_child == node_id {
+                                    return false; // Return false if we reach the node before reaching the nth child
+                                }
+
+                                nth_child = if let Some(sibling) = dom.get_next_sibling(nth_child) {
+                                    sibling
+                                } else {
+                                    return false; // Not enough siblings to reach nth-child
+                                }
+                            }
+
+                            if nth_child != node_id {
+                                return false; // Not the nth child
+                            }
+                        } else {
+                            return false; // Invalid argument for nth-child
+                        }
+                    }
+                    _ => return false, // Unsupported function
+                }
+            }
             Selector::Descendant => unreachable!("Descendants are handled by match_parts"),
         }
     }

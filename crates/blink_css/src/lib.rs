@@ -1,31 +1,67 @@
-use cssparser::{Parser, Token};
+use cssparser::{ParseError, Parser, Token};
 use std::collections::HashMap;
 
 #[derive(Debug, Default)]
 pub struct CSSStyleSheet {
     pub rules: Vec<CSSStyleRule>,
+    properties: Vec<HashMap<String, String>>,
+}
+
+impl CSSStyleSheet {
+    pub fn push_rules(
+        &mut self,
+        selectors: Vec<Vec<Selector>>,
+        properties: HashMap<String, String>,
+    ) {
+        if selectors.is_empty() {
+            return;
+        }
+
+        let properties_id = self.properties.len();
+        self.properties.push(properties);
+
+        for selector in selectors {
+            self.rules.push(CSSStyleRule {
+                selector,
+                properties_map_id: properties_id,
+            });
+        }
+    }
 }
 
 #[derive(Debug)]
 pub struct CSSStyleRule {
     pub selector: Vec<Selector>,
-    pub properties: HashMap<String, String>,
+    pub properties_map_id: usize,
+}
+
+impl CSSStyleRule {
+    pub fn properties<'a>(
+        &self,
+        stylesheet: &'a CSSStyleSheet,
+    ) -> Option<&'a HashMap<String, String>> {
+        stylesheet.properties.get(self.properties_map_id)
+    }
 }
 
 #[derive(Debug, PartialEq)]
 pub enum Selector {
-    PseudoClass(String),
-    PseudoElement(String),
     Tag(String),
     ID(String),
     Class(String),
+    PseudoClass(String),
+    PseudoElement(String),
+    Function(String, Vec<String>),
     Descendant,
     // DirectDescendant,
 }
 
 impl CSSStyleSheet {
     pub fn new() -> Self {
-        Self { rules: Vec::new() }
+        Self {
+            rules: Vec::new(),
+            properties: Vec::new(),
+        }
     }
 }
 
@@ -55,20 +91,45 @@ pub fn parse_css_into_stylesheet(input: &str, stylesheet: &mut CSSStyleSheet) {
     let mut parser = Parser::new(input);
 
     while !parser.is_exhausted() {
-        if parse_next_rule(&mut parser, stylesheet).is_err() {
-            let _ = parser.next();
+        let _ = parse_next_rule(&mut parser, stylesheet);
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum CustomCSSParseError {
+    InvalidRule,
+}
+
+fn skip_invalid_rule(parser: &mut Parser) -> Result<(), ParseError<CustomCSSParseError>> {
+    while !parser.is_exhausted() {
+        if matches!(parser.next()?, Token::CurlyBracketBlock) {
+            break;
         }
     }
+    Err(ParseError::custom(CustomCSSParseError::InvalidRule))
 }
 
 fn parse_next_rule(
     parser: &mut Parser,
     stylesheet: &mut CSSStyleSheet,
-) -> Result<(), cssparser::ParseError<()>> {
+) -> Result<(), ParseError<CustomCSSParseError>> {
+    let mut selectors: Vec<Vec<Selector>> = Vec::new();
     let mut selector: Vec<Selector> = Vec::new();
+
+    let mut seen_pseudo_element = false;
 
     loop {
         let token = parser.next_including_whitespace()?;
+
+        if seen_pseudo_element
+            && !matches!(
+                token,
+                Token::WhiteSpace(_) | Token::Comma | Token::CurlyBracketBlock
+            )
+        {
+            return skip_invalid_rule(parser);
+        }
+
         match token {
             Token::CurlyBracketBlock => {
                 let mut properties = HashMap::new();
@@ -81,30 +142,23 @@ fn parse_next_rule(
                     selector.pop();
                 }
 
-                stylesheet.rules.push(CSSStyleRule {
-                    selector,
-                    properties,
-                });
+                if !selector.is_empty() {
+                    selectors.push(std::mem::take(&mut selector));
+                }
+
+                stylesheet.push_rules(selectors, properties);
+
                 break;
             }
-            Token::Colon => {
-                match parser.next()? {
-                    Token::Colon => {
-                        if let Token::Ident(name) = parser.next()? {
-                            selector.push(Selector::PseudoElement(name.to_string()));
-                        }
-                    }
-                    Token::Ident(name) => {
-                        selector.push(Selector::PseudoClass(name.to_string()));
-                    }
-                    _ => {} // Ignore invalid pseudo-class syntax
+            Token::Comma => {
+                if let Some(Selector::Descendant) = selector.last() {
+                    selector.pop();
                 }
-            }
-            Token::Ident(name) => selector.push(Selector::Tag(name.to_string())),
-            Token::Delim('.') => {
-                if let Token::Ident(name) = parser.next()? {
-                    selector.push(Selector::Class(name.to_string()))
+                if selector.is_empty() {
+                    return skip_invalid_rule(parser);
                 }
+                selectors.push(std::mem::take(&mut selector));
+                seen_pseudo_element = false;
             }
             Token::WhiteSpace(_) => {
                 if selector.is_empty() {
@@ -119,6 +173,52 @@ fn parse_next_rule(
                     _ => {}
                 }
             }
+            Token::Colon => {
+                let next_token = parser.next_including_whitespace()?.clone();
+                match next_token {
+                    Token::Colon => {
+                        if let Token::Ident(name) = parser.next_including_whitespace()? {
+                            selector.push(Selector::PseudoElement(name.to_ascii_lowercase()));
+                            seen_pseudo_element = true;
+                        }
+                    }
+                    Token::Ident(name) => {
+                        let name = name.to_ascii_lowercase();
+                        match name.as_str() {
+                            "before" | "after" | "first-line" | "first-letter" => {
+                                selector.push(Selector::PseudoElement(name.to_string()));
+                                seen_pseudo_element = true;
+                            }
+                            _ => {
+                                selector.push(Selector::PseudoClass(name.to_string()));
+                            }
+                        }
+                    }
+                    Token::Function(name) => {
+                        let mut args = Vec::new();
+                        parser.parse_nested_block(|nested| {
+                            while !nested.is_exhausted() {
+                                match nested.next()? {
+                                    Token::Ident(arg) => args.push(arg.to_string()),
+                                    Token::Comma => continue,
+                                    _ => break,
+                                }
+                            }
+                            Ok(())
+                        })?;
+                        selector.push(Selector::Function(name.to_string(), args));
+                    }
+                    _ => {
+                        return skip_invalid_rule(parser);
+                    }
+                }
+            }
+            Token::Ident(name) => selector.push(Selector::Tag(name.to_string())),
+            Token::Delim('.') => {
+                if let Token::Ident(name) = parser.next_including_whitespace()? {
+                    selector.push(Selector::Class(name.to_string()))
+                }
+            }
             Token::IDHash(name) => selector.push(Selector::ID(name.to_string())),
             _ => {}
         }
@@ -130,7 +230,7 @@ fn parse_next_rule(
 fn parse_properties(
     parser: &mut Parser,
     properties: &mut HashMap<String, String>,
-) -> Result<(), cssparser::ParseError<()>> {
+) -> Result<(), ParseError<CustomCSSParseError>> {
     while !parser.is_exhausted() {
         let name = match parser.next()? {
             Token::Ident(name) => name.to_string(),
@@ -153,7 +253,7 @@ fn parse_properties(
 fn serialize_value_tokens(
     parser: &mut Parser,
     out: &mut String,
-) -> Result<(), cssparser::ParseError<()>> {
+) -> Result<(), ParseError<CustomCSSParseError>> {
     while !parser.is_exhausted() {
         let token = parser.next_including_whitespace()?;
 
@@ -220,7 +320,14 @@ mod tests {
             stylesheet.rules[0].selector[0],
             Selector::Tag("p".to_string())
         );
-        assert_eq!(stylesheet.rules[0].properties.get("color").unwrap(), "red");
+        assert_eq!(
+            stylesheet.rules[0]
+                .properties(&stylesheet)
+                .unwrap()
+                .get("color")
+                .unwrap(),
+            "red"
+        );
     }
 
     #[test]
@@ -230,11 +337,19 @@ mod tests {
 
         assert_eq!(stylesheet.rules.len(), 1);
         assert_eq!(
-            stylesheet.rules[0].properties.get("width").unwrap(),
+            stylesheet.rules[0]
+                .properties(&stylesheet)
+                .unwrap()
+                .get("width")
+                .unwrap(),
             "100px"
         );
         assert_eq!(
-            stylesheet.rules[0].properties.get("height").unwrap(),
+            stylesheet.rules[0]
+                .properties(&stylesheet)
+                .unwrap()
+                .get("height")
+                .unwrap(),
             "50px"
         );
     }
@@ -273,7 +388,11 @@ mod tests {
             Selector::PseudoClass("root".to_string())
         );
         assert_eq!(
-            stylesheet.rules[0].properties.get("--main-color").unwrap(),
+            stylesheet.rules[0]
+                .properties(&stylesheet)
+                .unwrap()
+                .get("--main-color")
+                .unwrap(),
             "#ff0000"
         );
     }
@@ -295,7 +414,8 @@ mod tests {
         );
         assert_eq!(
             stylesheet.rules[0]
-                .properties
+                .properties(&stylesheet)
+                .unwrap()
                 .get("text-decoration")
                 .unwrap(),
             "underline"
@@ -311,12 +431,17 @@ mod tests {
         );
 
         assert_eq!(
-            stylesheet.rules[0].properties.get("border").unwrap(),
+            stylesheet.rules[0]
+                .properties(&stylesheet)
+                .unwrap()
+                .get("border")
+                .unwrap(),
             "1px solid black"
         );
         assert_eq!(
             stylesheet.rules[0]
-                .properties
+                .properties(&stylesheet)
+                .unwrap()
                 .get("background-color")
                 .unwrap(),
             "#f3f3f3"
@@ -338,7 +463,11 @@ mod tests {
             Selector::Tag("h1".to_string())
         );
         assert_eq!(
-            stylesheet.rules[0].properties.get("font-size").unwrap(),
+            stylesheet.rules[0]
+                .properties(&stylesheet)
+                .unwrap()
+                .get("font-size")
+                .unwrap(),
             "24px"
         );
 
@@ -347,6 +476,13 @@ mod tests {
             stylesheet.rules[1].selector[0],
             Selector::Tag("p".to_string())
         );
-        assert_eq!(stylesheet.rules[1].properties.get("color").unwrap(), "blue");
+        assert_eq!(
+            stylesheet.rules[1]
+                .properties(&stylesheet)
+                .unwrap()
+                .get("color")
+                .unwrap(),
+            "blue"
+        );
     }
 }

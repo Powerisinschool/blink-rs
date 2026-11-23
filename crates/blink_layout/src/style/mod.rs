@@ -79,7 +79,7 @@ impl StyleCache {
 fn compute_style(node_id: DomNodeId, dom: &Dom, stylesheet: &CSSStyleSheet) -> ComputedStyle {
     let mut rules = matching::get_matching_rules(node_id, dom, stylesheet);
 
-    cascade::cascade_properties(&mut rules, default_display(node_id, dom))
+    cascade::cascade_properties(&mut rules, stylesheet, default_display(node_id, dom))
 }
 
 fn default_display(node_id: DomNodeId, dom: &Dom) -> Display {
