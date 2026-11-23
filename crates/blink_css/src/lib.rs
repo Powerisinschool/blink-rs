@@ -78,6 +78,12 @@ impl CSSStyleRule {
             match part {
                 Selector::ID(_) => ids += 1,
                 Selector::Class(_) | Selector::PseudoClass(_) => classes += 1,
+                Selector::Function(name, _) => match name.as_str() {
+                    "nth-child" | "nth-last-child" | "nth-of-type" | "nth-last-of-type" => {
+                        classes += 1
+                    }
+                    _ => {}
+                },
                 Selector::Tag(_) | Selector::PseudoElement(_) => tags += 1,
                 _ => {}
             }
