@@ -153,6 +153,12 @@ pub(super) mod tests {
         dom.set_first_child(div_node, Some(p_node))
             .expect("Failed to set first child");
 
+        let rule_root = get_first_rule(":root { font-size: 16px; }");
+        assert!(
+            matches_selector(div_node, &dom, &rule_root),
+            "Should match ':root' pseudo-class for root node"
+        );
+
         let rule_p = get_first_rule("p { color: red; }");
         assert!(
             matches_selector(p_node, &dom, &rule_p),
