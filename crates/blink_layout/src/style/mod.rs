@@ -160,6 +160,34 @@ mod tests {
     }
 
     #[test]
+    fn test_compute_root_overrides_direct_tag() {
+        let mut dom = Dom::new();
+        dom.ensure_tag_registered(DIV_TAG_INDEX);
+
+        let div_node = dom.add_element(DIV_TAG_INDEX, None);
+
+        let mut stylesheet = CSSStyleSheet::new();
+        let css = "
+            :root { width: 200px; }
+            div { width: 100px; height: 50px; }
+        ";
+        parse_css_into_stylesheet(css, &mut stylesheet);
+
+        let computed = compute_style(div_node, &dom, &stylesheet);
+
+        assert_eq!(
+            computed.width,
+            Some(200.0),
+            "Root rule should override the direct tag rule for width"
+        );
+        assert_eq!(
+            computed.height,
+            Some(50.0),
+            "Height should be inherited from the direct tag rule"
+        );
+    }
+
+    #[test]
     fn test_compute_style_margin_and_padding_cascade() {
         let mut dom = Dom::new();
         dom.ensure_tag_registered(DIV_TAG_INDEX);

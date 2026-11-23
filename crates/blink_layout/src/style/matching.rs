@@ -199,9 +199,9 @@ pub(super) mod tests {
     #[test]
     fn test_deep_descendant_matching() {
         let mut dom = Dom::new();
-        let div_tag = blink_dom::get_tag_index("div");
-        let section_tag = blink_dom::get_tag_index("section");
-        let p_tag = blink_dom::get_tag_index("p");
+        let div_tag = get_tag_index("div");
+        let section_tag = get_tag_index("section");
+        let p_tag = get_tag_index("p");
 
         // Hierarchy: <div id="main"> -> <section class="container"> -> <p class="card">
         let div_node = dom.add_element(
