@@ -170,7 +170,7 @@ fn serialize_value_tokens(
                 out.push_str(name);
             }
             Token::Function(name) => {
-                out.push_str(&name);
+                out.push_str(name);
                 out.push('(');
                 parser.parse_nested_block(|nested| serialize_value_tokens(nested, out))?;
                 out.push(')');
@@ -249,6 +249,47 @@ mod tests {
         assert_eq!(
             stylesheet.rules[0].selector[3],
             Selector::Class("card".to_string())
+        );
+    }
+
+    #[test]
+    fn test_root_selector() {
+        let mut stylesheet = CSSStyleSheet::new();
+        parse_css_into_stylesheet(":root { --main-color: #ff0000; }", &mut stylesheet);
+
+        assert_eq!(stylesheet.rules.len(), 1);
+        assert_eq!(stylesheet.rules[0].selector.len(), 1);
+        assert_eq!(
+            stylesheet.rules[0].selector[0],
+            Selector::PseudoClass("root".to_string())
+        );
+        assert_eq!(
+            stylesheet.rules[0].properties.get("--main-color").unwrap(),
+            "#ff0000"
+        );
+    }
+
+    #[test]
+    fn test_standard_pseudo_class() {
+        let mut stylesheet = CSSStyleSheet::new();
+        parse_css_into_stylesheet("a:hover { text-decoration: underline; }", &mut stylesheet);
+
+        assert_eq!(stylesheet.rules.len(), 1);
+        assert_eq!(stylesheet.rules[0].selector.len(), 2);
+        assert_eq!(
+            stylesheet.rules[0].selector[0],
+            Selector::Tag("a".to_string())
+        );
+        assert_eq!(
+            stylesheet.rules[0].selector[1],
+            Selector::PseudoClass("hover".to_string())
+        );
+        assert_eq!(
+            stylesheet.rules[0]
+                .properties
+                .get("text-decoration")
+                .unwrap(),
+            "underline"
         );
     }
 
