@@ -14,6 +14,7 @@ pub struct CSSStyleRule {
 
 #[derive(Debug, PartialEq)]
 pub enum Selector {
+    PseudoClass(String),
     Tag(String),
     ID(String),
     Class(String),
@@ -39,7 +40,7 @@ impl CSSStyleRule {
         for part in &self.selector {
             match part {
                 Selector::ID(_) => ids += 1,
-                Selector::Class(_) => classes += 1,
+                Selector::Class(_) | Selector::PseudoClass(_) => classes += 1,
                 Selector::Tag(_) => tags += 1,
                 _ => {}
             }
@@ -85,6 +86,11 @@ fn parse_next_rule(
                 });
                 break;
             }
+            Token::Colon => {
+                if let Token::Ident(name) = parser.next()? {
+                    selector.push(Selector::PseudoClass(name.to_string()));
+                }
+            }
             Token::Ident(name) => selector.push(Selector::Tag(name.to_string())),
             Token::Delim('.') => {
                 if let Token::Ident(name) = parser.next()? {
@@ -96,7 +102,9 @@ fn parse_next_rule(
                     continue;
                 }
                 match selector.last() {
-                    Some(Selector::Tag(_)) | Some(Selector::ID(_)) | Some(Selector::Class(_)) => {
+                    Some(Selector::Tag(_))
+                    | Some(Selector::ID(_))
+                    | Some(Selector::Class(_) | Selector::PseudoClass(_)) => {
                         selector.push(Selector::Descendant)
                     }
                     _ => {}
@@ -125,31 +133,50 @@ fn parse_properties(
         }
 
         let mut value = String::new();
-        while !parser.is_exhausted() {
-            let token = parser.next_including_whitespace()?;
-            if matches!(token, Token::Semicolon) {
-                break;
-            }
-
-            match token {
-                Token::Ident(v) => value.push_str(v),
-                Token::Number { value: num, .. } => value.push_str(&num.to_string()),
-                Token::Dimension {
-                    value: num, unit, ..
-                } => {
-                    value.push_str(&num.to_string());
-                    value.push_str(unit);
-                }
-                Token::WhiteSpace(_) => value.push(' '),
-                Token::IDHash(name) | Token::Hash(name) => {
-                    value.push('#');
-                    value.push_str(name);
-                }
-                _ => {}
-            }
-        }
+        serialize_value_tokens(parser, &mut value)?;
 
         properties.insert(name, value.trim().to_string());
+    }
+
+    Ok(())
+}
+
+fn serialize_value_tokens(
+    parser: &mut Parser,
+    out: &mut String,
+) -> Result<(), cssparser::ParseError<()>> {
+    while !parser.is_exhausted() {
+        let token = parser.next_including_whitespace()?;
+
+        match token {
+            Token::Semicolon => break,
+            Token::Ident(v) => out.push_str(v),
+            Token::Number { value: num, .. } => out.push_str(&num.to_string()),
+            Token::Dimension {
+                value: num, unit, ..
+            } => {
+                out.push_str(&num.to_string());
+                out.push_str(unit);
+            }
+            Token::Percentage { unit_value, .. } => {
+                out.push_str(&(unit_value * 100.0).to_string());
+                out.push('%');
+            }
+            Token::WhiteSpace(_) => out.push(' '),
+            Token::Comma => out.push(','),
+            Token::Delim(c) => out.push(*c),
+            Token::IDHash(name) | Token::Hash(name) => {
+                out.push('#');
+                out.push_str(name);
+            }
+            Token::Function(name) => {
+                out.push_str(&name);
+                out.push('(');
+                parser.parse_nested_block(|nested| serialize_value_tokens(nested, out))?;
+                out.push(')');
+            }
+            _ => {}
+        }
     }
 
     Ok(())

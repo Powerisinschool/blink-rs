@@ -96,6 +96,16 @@ fn match_compound(node_id: DomNodeId, dom: &Dom, parts: &[Selector]) -> bool {
                     return false;
                 }
             }
+            Selector::PseudoClass(name) => {
+                match name.as_str() {
+                    "root" => {
+                        if node_id != dom.root_node_id() {
+                            return false;
+                        }
+                    }
+                    _ => return false, // Unsupported pseudo-class
+                }
+            }
             Selector::Descendant => unreachable!("Descendants are handled by match_parts"),
         }
     }
