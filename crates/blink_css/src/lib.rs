@@ -206,13 +206,14 @@ fn parse_next_rule(
                             while !nested.is_exhausted() {
                                 match nested.next()? {
                                     Token::Ident(arg) => args.push(arg.to_string()),
+                                    Token::Number { value, .. } => args.push(value.to_string()),
                                     Token::Comma => continue,
                                     _ => break,
                                 }
                             }
                             Ok(())
                         })?;
-                        selector.push(Selector::Function(name.to_string(), args));
+                        selector.push(Selector::Function(name.to_ascii_lowercase(), args));
                     }
                     _ => {
                         return skip_invalid_rule(parser);
