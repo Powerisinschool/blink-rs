@@ -145,6 +145,13 @@ Known gaps, many of which are good places to start contributing (see [CONTRIBUTI
 
 ---
 
+### Retrieving the source code
+
+```sh
+git clone @{repo_url}.git
+cd @{repo_name}
+```
+
 ### Building and running
 
 ```sh
