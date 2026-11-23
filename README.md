@@ -150,6 +150,13 @@ Known gaps, many of which are good places to start contributing (see [CONTRIBUTI
 
 ---
 
+### Retrieving the source code
+
+```sh
+git clone https://github.com/Powerisinschool/blink-rs.git
+cd blink-rs
+```
+
 ### Building and running
 
 ```sh
