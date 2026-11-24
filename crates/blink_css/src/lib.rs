@@ -173,9 +173,9 @@ fn parse_next_rule(
                 match selector.last() {
                     Some(Selector::Tag(_))
                     | Some(Selector::ID(_))
-                    | Some(Selector::Class(_) | Selector::PseudoClass(_)) => {
-                        selector.push(Selector::Descendant)
-                    }
+                    | Some(Selector::Class(_))
+                    | Some(Selector::PseudoClass(_))
+                    | Some(Selector::Function(..)) => selector.push(Selector::Descendant),
                     _ => {}
                 }
             }

@@ -126,9 +126,25 @@ fn match_compound(node_id: DomNodeId, dom: &Dom, parts: &[Selector]) -> bool {
                                 Some(pid) => pid,
                                 None => return false,
                             };
+
                             let first_child = dom
                                 .get_first_child(parent_id)
                                 .expect("Parent should at least have us as a child");
+                            let first_element_child = match dom.get_node(first_child) {
+                                Some(node) => {
+                                    if !node.is_element() {
+                                        next_element_sibling(first_child, dom)
+                                    } else {
+                                        Some(first_child)
+                                    }
+                                }
+                                None => return false, // Node not found in DOM (should not happen unless the DOM is corrupted)
+                            };
+                            let first_child = match first_element_child {
+                                Some(fc) => fc,
+                                None => return false, // No element children
+                            };
+
                             let mut nth_child = first_child;
 
                             for _ in 1..n {
