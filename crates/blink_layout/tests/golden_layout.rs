@@ -14,7 +14,7 @@ use blink_html::parse_html;
 use blink_layout::layout::ConstraintSpace;
 use blink_layout::layout::LayoutContext;
 use blink_layout::layout::{FragmentArena, LayoutFragmentId};
-use blink_layout::style::StyleCache;
+use blink_layout::style::compute_styles;
 use std::env;
 use std::fmt::Write;
 use std::fs;
@@ -25,19 +25,22 @@ const VIEWPORT: (f32, f32) = (800.0, 600.0);
 
 fn layout_fixture(html: &str, css: &str) -> (Dom, FragmentArena) {
     let dom = parse_html(html);
+    let Some(virtual_root_id) = dom.root_node_id() else {
+        panic!("Document should have a root node");
+    };
 
     let mut stylesheet = CSSStyleSheet::new();
     parse_css_into_stylesheet(css, &mut stylesheet);
 
     let space = ConstraintSpace::from(VIEWPORT);
+    let style_cache = compute_styles(virtual_root_id, &dom, &stylesheet, Some(dom.nodes_len()));
     let mut ctx = LayoutContext {
         dom: &dom,
-        stylesheet: &stylesheet,
+        style_cache: &style_cache, // Initialize StyleCache with the number of nodes in the DOM
         text_measurer: &blink_layout::layout::FixedWidth {},
-        style_cache: StyleCache::new(dom.nodes_len()), // Initialize StyleCache with the number of nodes in the DOM
     };
 
-    let arena = ctx.build_layout_tree(dom.root_node_id(), space);
+    let arena = ctx.build_layout_tree(virtual_root_id, space);
 
     (dom, arena)
 }

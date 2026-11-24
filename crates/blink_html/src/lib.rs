@@ -10,7 +10,9 @@ pub struct HtmlDom(pub RefCell<Dom>);
 impl HtmlDom {
     pub fn new() -> Self {
         let mut dom = Dom::new();
-        dom.add_element(0, None);
+        let doc_root = dom.add_element(0, None);
+        dom.set_virtual_root(doc_root)
+            .expect("Failed to set virtual root");
         Self(RefCell::new(dom))
     }
 }
@@ -38,7 +40,10 @@ impl TreeSink for HtmlDom {
     }
 
     fn get_document(&self) -> Self::Handle {
-        self.0.borrow().root_node_id()
+        self.0
+            .borrow()
+            .root_node_id()
+            .expect("Document should have a root node")
     }
 
     fn elem_name<'a>(&'a self, target: &'a Self::Handle) -> ExpandedName<'a> {
@@ -73,6 +78,7 @@ impl TreeSink for HtmlDom {
         } else {
             Some(attrs.into_boxed_slice())
         };
+
         dom.add_element(tag, attrs_payload)
     }
 
@@ -309,7 +315,9 @@ mod tests {
         let dom = parse_html(html);
 
         // Check that the root node has one child (the div)
-        let document = dom.root_node_id();
+        let document = dom
+            .root_node_id()
+            .expect("Document should have a root node");
         let html_id = dom
             .get_first_child(document)
             .expect("Document should have a child (html)");

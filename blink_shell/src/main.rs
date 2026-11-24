@@ -1,7 +1,7 @@
 use blink_css::{CSSStyleSheet, parse_css_into_stylesheet};
 use blink_html::parse_html;
 use blink_layout::layout::{ConstraintSpace, FontdueMeasurer, LayoutContext};
-use blink_layout::style::StyleCache;
+use blink_layout::style::compute_styles;
 use blink_render::{RenderOptions, render_to_png_with_options};
 use blink_svg::render_to_svg;
 use std::fs;
@@ -40,18 +40,26 @@ fn main() {
     // Calculate layout boundaries
     let initial_space = ConstraintSpace::from((OUTPUT_WIDTH, OUTPUT_HEIGHT));
 
-    let root_id = output_dom.root_node_id();
+    let Some(virtual_root_id) = output_dom.root_node_id() else {
+        panic!("Document should have a root node");
+    };
+
+    let style_cache = compute_styles(
+        virtual_root_id,
+        &output_dom,
+        &stylesheet,
+        Some(output_dom.nodes_len()),
+    );
 
     let mut ctx = LayoutContext {
         dom: &output_dom,
-        stylesheet: &stylesheet,
+        style_cache: &style_cache, // Initialize StyleCache with the number of nodes in the DOM
         text_measurer: &FontdueMeasurer {
             font: font.clone(),
             font_size,
         },
-        style_cache: StyleCache::new(output_dom.nodes_len()), // Initialize StyleCache with the number of nodes in the DOM
     };
-    let arena = ctx.build_layout_tree(root_id, initial_space);
+    let arena = ctx.build_layout_tree(virtual_root_id, initial_space);
 
     // println!();
     // println!("Fragment arena: {:#?}", arena);
@@ -61,7 +69,7 @@ fn main() {
     // Output the rendered image
     render_to_png_with_options(
         &arena,
-        &ctx.style_cache,
+        &style_cache,
         OUTPUT_WIDTH,
         OUTPUT_HEIGHT,
         "output.png",

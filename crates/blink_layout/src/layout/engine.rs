@@ -3,24 +3,42 @@ use super::inline::layout_inline_run;
 use super::space::ConstraintSpace;
 use super::text::TextMeasurer;
 use crate::geom::{PhysicalOffset, PhysicalRect, PhysicalSize};
-use crate::style::{DisplayOutside, StyleCache};
-use blink_css::CSSStyleSheet;
+use crate::style::{DisplayOutside, EdgeSizes, StyleCache};
 use blink_dom::{Dom, DomNodeId};
 
 pub struct LayoutContext<'a, M: TextMeasurer + ?Sized> {
     pub dom: &'a Dom,
-    pub stylesheet: &'a CSSStyleSheet,
+    pub style_cache: &'a StyleCache,
     pub text_measurer: &'a M,
-    pub style_cache: StyleCache,
 }
 
 impl<'a, M: TextMeasurer + ?Sized> LayoutContext<'a, M> {
     pub fn build_layout_tree(
         &mut self,
-        root_id: DomNodeId,
+        virtual_root_id: DomNodeId,
         initial_space: ConstraintSpace,
     ) -> FragmentArena {
         let mut arena = FragmentArena::new();
+
+        let bounding_rect = PhysicalRect::new(
+            PhysicalOffset::default(),
+            PhysicalSize::new(
+                initial_space.available_width(),
+                initial_space.available_height(),
+            ),
+        );
+        let virtual_root_fragment = LayoutFragment::new(
+            Some(virtual_root_id),
+            bounding_rect,
+            None, // No ComputedStyle for the virtual root
+            FragmentKind::Box,
+        );
+
+        arena.add_fragment(virtual_root_fragment);
+
+        let Some(root_id) = self.dom.get_first_child(virtual_root_id) else {
+            return arena;
+        };
 
         let root_fragment_id =
             if let Some(fragment) = self.layout_node(root_id, initial_space, &mut arena) {
@@ -54,9 +72,7 @@ impl<'a, M: TextMeasurer + ?Sized> LayoutContext<'a, M> {
         }
 
         let (computed_style_id, width, height, edges, margin, is_inline_level) = {
-            let (id, style) = self
-                .style_cache
-                .get_or_compute(node_id, self.dom, self.stylesheet);
+            let (id, style) = self.style_cache.get_entry_for_node(node_id)?;
 
             if style.display.is_none() {
                 return None;
@@ -130,19 +146,23 @@ impl<'a, M: TextMeasurer + ?Sized> LayoutContext<'a, M> {
 
         while let Some(dom_child) = current_dom_child {
             let (child_margin, is_child_inline_level) = {
-                let (_, style) =
-                    self.style_cache
-                        .get_or_compute(dom_child, self.dom, self.stylesheet);
+                if self.dom.get_node(dom_child).is_some_and(|n| n.is_text()) {
+                    (EdgeSizes::default(), true)
+                } else {
+                    let Some(style) = self.style_cache.get_for_node(dom_child) else {
+                        return (None, 0.0, 0.0);
+                    };
 
-                if style.display.is_none() {
-                    current_dom_child = self.dom.get_next_sibling(dom_child);
-                    continue;
+                    if style.display.is_none() {
+                        current_dom_child = self.dom.get_next_sibling(dom_child);
+                        continue;
+                    }
+
+                    (
+                        style.margin,
+                        style.display.outside() == Some(DisplayOutside::Inline),
+                    )
                 }
-
-                (
-                    style.margin,
-                    style.display.outside() == Some(DisplayOutside::Inline),
-                )
             };
 
             let is_inline =
@@ -211,6 +231,8 @@ impl<'a, M: TextMeasurer + ?Sized> LayoutContext<'a, M> {
 mod tests {
     use super::super::text::FixedWidth;
     use super::*;
+    use crate::style::compute_styles;
+    use blink_css::CSSStyleSheet;
     use blink_css::parse_css_into_stylesheet;
     use blink_dom::get_tag_index;
 
@@ -222,13 +244,21 @@ mod tests {
     fn inline_element_without_explicit_width_shrink_wraps_children() {
         let mut dom = Dom::new();
 
+        let root = dom.add_element(0, None);
+        dom.set_virtual_root(root)
+            .expect("Failed to set virtual root");
+
         let parent = dom.add_element(get_tag_index("div"), None);
         let child = dom.add_element(get_tag_index("span"), None);
 
         dom.set_parent(child, parent).expect("Failed to set parent");
-
         dom.set_first_child(parent, Some(child))
-            .expect("Failed to set first child");
+            .expect("Failed to set first child of parent");
+
+        dom.set_parent(parent, root)
+            .expect("Failed to set root as parent");
+        dom.set_first_child(root, Some(parent))
+            .expect("Failed to set first child of root");
 
         let mut stylesheet = CSSStyleSheet::new();
         parse_css_into_stylesheet(
@@ -241,14 +271,15 @@ mod tests {
 
         let space = test_canvas_space();
 
+        let style_cache = compute_styles(root, &dom, &stylesheet, None);
+
         let mut ctx = LayoutContext {
             dom: &dom,
-            stylesheet: &stylesheet,
+            style_cache: &style_cache,
             text_measurer: &FixedWidth {},
-            style_cache: StyleCache::default(),
         };
 
-        let arena = ctx.build_layout_tree(parent, space);
+        let arena = ctx.build_layout_tree(root, space);
 
         let parent_fragment = arena
             .get_fragment_by_dom_node(parent)
@@ -265,7 +296,14 @@ mod tests {
     fn test_line_wraps() {
         let mut dom = Dom::new();
 
+        let root = dom.add_element(0, None);
+        dom.set_virtual_root(root)
+            .expect("Failed to set virtual root");
+
         let parent = dom.add_element(get_tag_index("div"), None);
+        dom.set_parent(parent, root).expect("Failed to set parent");
+        dom.set_first_child(root, Some(parent))
+            .expect("Failed to set first child of root");
 
         let child1 = dom.add_element(get_tag_index("span"), None);
         let child2 = dom.add_element(get_tag_index("span"), None);
@@ -296,14 +334,15 @@ mod tests {
 
         let space = test_canvas_space();
 
+        let style_cache = compute_styles(root, &dom, &stylesheet, None);
+
         let mut ctx = LayoutContext {
             dom: &dom,
-            stylesheet: &stylesheet,
+            style_cache: &style_cache,
             text_measurer: &FixedWidth {},
-            style_cache: StyleCache::default(),
         };
 
-        let arena = ctx.build_layout_tree(parent, space);
+        let arena = ctx.build_layout_tree(root, space);
 
         let child1_fragment = arena
             .get_fragment_by_dom_node(child1)

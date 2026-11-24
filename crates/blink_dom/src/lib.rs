@@ -158,6 +158,8 @@ pub struct Dom {
     attribute_store: SlotStore<Box<[Attribute]>, AttrTag>,
     character_data: SlotStore<String, CharacterDataTag>,
 
+    virtual_root: Option<DomNodeId>,
+
     pub tag_registry: HashMap<u8, Box<QualName>>,
 }
 
@@ -331,6 +333,7 @@ impl Dom {
             free_slots: Vec::with_capacity(128),
             // attribute_table: Vec::with_capacity(512),
             // free_attrs: Vec::with_capacity(128),
+            virtual_root: None,
             attribute_store: SlotStore::with_capacity(512),
             character_data: SlotStore::with_capacity(512),
             tag_registry: HashMap::new(),
@@ -586,6 +589,19 @@ impl Dom {
         Ok(())
     }
 
+    pub fn set_virtual_root(&mut self, root: DomNodeId) -> Result<(), String> {
+        if self.virtual_root.is_some() {
+            return Err("Virtual root is already set".into());
+        }
+
+        if self.live(root).is_none() {
+            return Err("Provided root node is not valid".into());
+        }
+        self.virtual_root = Some(root);
+
+        Ok(())
+    }
+
     pub fn nodes_len(&self) -> usize {
         self.nodes.len()
     }
@@ -648,8 +664,12 @@ impl Dom {
         }
     }
 
-    pub fn root_node_id(&self) -> DomNodeId {
-        DomNodeId::new(0, 0).unwrap()
+    pub fn root_node_id(&self) -> Option<DomNodeId> {
+        self.virtual_root
+    }
+
+    pub fn is_document_node(&self, node_id: DomNodeId) -> bool {
+        self.virtual_root == Some(node_id)
     }
 
     pub fn ensure_tag_registered(&mut self, tag: u8) {

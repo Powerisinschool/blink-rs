@@ -2,6 +2,7 @@ mod cascade;
 mod matching;
 mod types;
 
+use blink_core::generator::Generation;
 pub use types::{
     BorderSide, BorderStyle, Color, ComputedStyle, Display, DisplayInside, DisplayOutside,
     EdgeSizes,
@@ -13,9 +14,10 @@ use blink_dom::{Dom, DomNodeId, get_tag_name};
 pub struct ComputedStyleTag;
 pub type ComputedStyleId = blink_core::base::Id<ComputedStyleTag>;
 
+#[derive(Debug)]
 pub struct StyleCache {
     styles: Vec<ComputedStyle>,
-    node_cache: Vec<Option<(blink_core::generator::Generation, ComputedStyleId)>>,
+    node_cache: Vec<Option<(Generation, ComputedStyleId)>>,
 }
 
 impl Default for StyleCache {
@@ -32,43 +34,37 @@ impl StyleCache {
         }
     }
 
-    pub fn get_or_compute(
-        &mut self,
-        node_id: DomNodeId,
-        dom: &Dom,
-        stylesheet: &CSSStyleSheet,
-    ) -> (ComputedStyleId, &ComputedStyle) {
-        let idx = node_id.slot();
-        let g = node_id.generation();
+    pub fn get_entry_for_node(&self, node: DomNodeId) -> Option<(ComputedStyleId, &ComputedStyle)> {
+        let idx = node.slot();
+        let g = node.generation();
 
-        let id = match self.node_cache.get(idx) {
-            Some(Some((cached_gen, style_id))) if *cached_gen == g => *style_id,
-            _ => {
-                let style = compute_style(node_id, dom, stylesheet);
-                let id = ComputedStyleId::from_usize(self.styles.len()).expect(
-                    "StyleCache has reached its maximum capacity of ComputedStyleId values",
-                );
-                self.styles.push(style);
-
-                if idx >= self.node_cache.len() {
-                    self.node_cache.resize(idx + 1, None);
-                }
-                self.node_cache[idx] = Some((g, id));
-                id
-            }
-        };
-
-        (id, &self.styles[id.get_index()])
+        self.check_and_get(idx, g)
+            .and_then(|style_id| self.get(style_id).map(|style| (style_id, style)))
     }
 
-    /// `insert_anonymous` inserts a new anonymous style into the cache and returns its `ComputedStyleId`.
-    /// This is useful for creating styles for elements that don't have a corresponding DOM node.
-    /// Returns `None` if the insertion fails (e.g., if the cache is full).
-    pub fn insert_anonymous(&mut self, style: ComputedStyle) -> Option<ComputedStyleId> {
-        let id = ComputedStyleId::from_u32(self.styles.len() as u32)?;
-        self.styles.push(style);
-        Some(id)
+    pub fn get_for_node(&self, node: DomNodeId) -> Option<&ComputedStyle> {
+        let idx = node.slot();
+        let g = node.generation();
+
+        self.check_and_get(idx, g)
+            .and_then(|style_id| self.get(style_id))
     }
+
+    pub fn id_for_node(&self, node: DomNodeId) -> Option<ComputedStyleId> {
+        let idx = node.slot();
+        let g = node.generation();
+
+        self.check_and_get(idx, g)
+    }
+
+    // /// `insert_anonymous` inserts a new anonymous style into the cache and returns its `ComputedStyleId`.
+    // /// This is useful for creating styles for elements that don't have a corresponding DOM node.
+    // /// Returns `None` if the insertion fails (e.g., if the cache is full).
+    // pub fn insert_anonymous(&mut self, style: ComputedStyle) -> Option<ComputedStyleId> {
+    //     let id = ComputedStyleId::from_u32(self.styles.len() as u32)?;
+    //     self.styles.push(style);
+    //     Some(id)
+    // }
 
     #[inline]
     pub fn get(&self, id: ComputedStyleId) -> Option<&ComputedStyle> {
@@ -76,11 +72,92 @@ impl StyleCache {
     }
 }
 
-fn compute_style(node_id: DomNodeId, dom: &Dom, stylesheet: &CSSStyleSheet) -> ComputedStyle {
+// Private helper function to compute the style for a given node
+impl StyleCache {
+    fn check_and_get(&self, index: usize, generation: Generation) -> Option<ComputedStyleId> {
+        if let Some(Some((cached_gen, style_id))) = self.node_cache.get(index)
+            && *cached_gen == generation
+        {
+            return Some(*style_id);
+        }
+        None
+    }
+
+    fn insert(&mut self, node: DomNodeId, style: ComputedStyle) -> ComputedStyleId {
+        let id = ComputedStyleId::from_usize(self.styles.len()).expect("ComputedStyleId overflow");
+        self.styles.push(style);
+        let idx = node.slot();
+        let g = node.generation();
+        if idx >= self.node_cache.len() {
+            self.node_cache.resize(idx + 1, None);
+        }
+        self.node_cache[idx] = Some((g, id));
+        id
+    }
+}
+
+fn is_stylable_element(node_id: DomNodeId, dom: &Dom) -> bool {
+    !dom.is_document_node(node_id)
+}
+
+pub fn compute_styles(
+    root: DomNodeId,
+    dom: &Dom,
+    stylesheet: &CSSStyleSheet,
+    initial_size: Option<usize>,
+) -> StyleCache {
+    let mut style_cache = StyleCache::new(initial_size.unwrap_or_default());
+
+    let mut stack = vec![(root, None)];
+
+    while let Some((node_id, parent_id)) = stack.pop() {
+        let Some(node) = dom.get_node(node_id) else {
+            continue;
+        };
+
+        if node.is_text() {
+            continue;
+        }
+
+        if is_stylable_element(node_id, dom) {
+            let parent_style = parent_id.and_then(|pid| style_cache.get_for_node(pid));
+            let computed_style = compute_element_style(node_id, parent_style, dom, stylesheet);
+            style_cache.insert(node_id, computed_style);
+        }
+
+        let mut current_child = dom.get_first_child(node_id);
+        while let Some(child) = current_child {
+            stack.push((child, Some(node_id)));
+            current_child = dom.get_next_sibling(child);
+        }
+    }
+
+    style_cache
+}
+
+fn compute_element_style(
+    node_id: DomNodeId,
+    #[allow(unused_variables)] // TODO: Use parent_style for computing inherited properties
+    parent_style: Option<&ComputedStyle>,
+    dom: &Dom,
+    stylesheet: &CSSStyleSheet,
+) -> ComputedStyle {
     let mut rules = matching::get_matching_rules(node_id, dom, stylesheet);
 
-    cascade::cascade_properties(&mut rules, stylesheet, default_display(node_id, dom))
+    let computed_style =
+        cascade::cascade_properties(&mut rules, stylesheet, default_display(node_id, dom));
+
+    // Compute custom properties (CSS variables) based on parent style if available
+    // Resolve var() in declarations using parent_style if necessary
+
+    computed_style
 }
+
+// fn compute_style(node_id: DomNodeId, dom: &Dom, stylesheet: &CSSStyleSheet) -> ComputedStyle {
+//     let mut rules = matching::get_matching_rules(node_id, dom, stylesheet);
+//
+//     cascade::cascade_properties(&mut rules, stylesheet, default_display(node_id, dom))
+// }
 
 fn default_display(node_id: DomNodeId, dom: &Dom) -> Display {
     if let Some(node) = dom.get_node(node_id)
@@ -99,11 +176,12 @@ fn default_display(node_id: DomNodeId, dom: &Dom) -> Display {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::style::matching::tests::{DIV_TAG_INDEX, make_attr};
     use blink_css::parse_css_into_stylesheet;
-    use matching::tests::{DIV_TAG_INDEX, make_attr};
+    use blink_dom::get_tag_index;
 
     #[test]
-    fn test_compute_style() {
+    fn compute_style_for_element() {
         let mut dom = Dom::new();
 
         dom.ensure_tag_registered(DIV_TAG_INDEX);
@@ -114,13 +192,37 @@ mod tests {
         let mut stylesheet = CSSStyleSheet::new();
         parse_css_into_stylesheet("div { width: 100px; height: 100px; }", &mut stylesheet);
 
-        let computed_style = compute_style(div_node, &dom, &stylesheet);
+        let style_cache = compute_styles(div_node, &dom, &stylesheet, None);
+
+        let computed_style = style_cache.get_for_node(div_node).unwrap();
         assert_eq!(computed_style.width, Some(100.0));
         assert_eq!(computed_style.height, Some(100.0));
     }
 
     #[test]
-    fn test_compute_style_cascade_overrides() {
+    fn computes_styles_for_descendants() {
+        let mut dom = Dom::new();
+
+        let parent = dom.add_element(get_tag_index("div"), None);
+        let child = dom.add_element(get_tag_index("span"), None);
+
+        dom.set_parent(child, parent).unwrap();
+        dom.set_first_child(parent, Some(child)).unwrap();
+
+        let mut stylesheet = CSSStyleSheet::new();
+        parse_css_into_stylesheet(
+            "div { width: 200px; } span { width: 100px; }",
+            &mut stylesheet,
+        );
+
+        let styles = compute_styles(parent, &dom, &stylesheet, None);
+
+        assert_eq!(styles.get_for_node(parent).unwrap().width, Some(200.0));
+        assert_eq!(styles.get_for_node(child).unwrap().width, Some(100.0));
+    }
+
+    #[test]
+    fn compute_style_cascade_overrides() {
         let mut dom = Dom::new();
         dom.ensure_tag_registered(DIV_TAG_INDEX);
 
@@ -138,7 +240,11 @@ mod tests {
         ";
         parse_css_into_stylesheet(css, &mut stylesheet);
 
-        let computed = compute_style(div_node, &dom, &stylesheet);
+        let style_cache = compute_styles(div_node, &dom, &stylesheet, None);
+
+        let computed = style_cache
+            .get_for_node(div_node)
+            .expect("Computed style should exist");
 
         assert_eq!(
             computed.height,
@@ -164,12 +270,12 @@ mod tests {
         let mut dom = Dom::new();
         dom.ensure_tag_registered(DIV_TAG_INDEX);
 
-        let root_node = dom.add_element(0, None); // Root node with tag index 0
+        let vroot_node = dom.add_element(0, None); // Root node with tag index 0
         let div_node = dom.add_element(DIV_TAG_INDEX, None);
 
-        dom.set_parent(div_node, root_node)
+        dom.set_parent(div_node, vroot_node)
             .expect("Failed to set parent");
-        dom.set_first_child(root_node, Some(div_node))
+        dom.set_first_child(vroot_node, Some(div_node))
             .expect("Failed to set first child");
 
         let mut stylesheet = CSSStyleSheet::new();
@@ -179,7 +285,11 @@ mod tests {
         ";
         parse_css_into_stylesheet(css, &mut stylesheet);
 
-        let computed = compute_style(div_node, &dom, &stylesheet);
+        let style_cache = compute_styles(vroot_node, &dom, &stylesheet, None);
+
+        let computed = style_cache
+            .get_for_node(div_node)
+            .expect("Computed style should exist");
 
         assert_eq!(
             computed.width,
@@ -216,7 +326,11 @@ mod tests {
         ";
         parse_css_into_stylesheet(css, &mut stylesheet);
 
-        let computed = compute_style(div_node, &dom, &stylesheet);
+        let style_cache = compute_styles(div_node, &dom, &stylesheet, None);
+
+        let computed = style_cache
+            .get_for_node(div_node)
+            .expect("Computed style should exist");
 
         assert_eq!(
             computed.margin,
@@ -264,7 +378,11 @@ mod tests {
         ";
         parse_css_into_stylesheet(css, &mut stylesheet);
 
-        let computed = compute_style(div_node, &dom, &stylesheet);
+        let style_cache = compute_styles(div_node, &dom, &stylesheet, None);
+
+        let computed = style_cache
+            .get_for_node(div_node)
+            .expect("Computed style should exist");
 
         assert_eq!(
             computed.border.top,
