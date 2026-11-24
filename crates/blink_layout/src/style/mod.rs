@@ -97,7 +97,7 @@ impl StyleCache {
 }
 
 fn is_stylable_element(node_id: DomNodeId, dom: &Dom) -> bool {
-    !dom.is_document_node(node_id)
+    !dom.is_document_node(node_id) && dom.get_node(node_id).is_some_and(|node| node.is_element())
 }
 
 pub fn compute_styles(

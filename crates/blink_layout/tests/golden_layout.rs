@@ -40,7 +40,7 @@ fn layout_fixture(html: &str, css: &str) -> (Dom, FragmentArena) {
         text_measurer: &blink_layout::layout::FixedWidth {},
     };
 
-    let arena = ctx.build_layout_tree(virtual_root_id, space);
+    let arena = ctx.build_layout_tree(space);
 
     (dom, arena)
 }

@@ -290,7 +290,10 @@ impl fmt::Debug for DomNode {
 
 impl DomNode {
     pub fn is_element(&self) -> bool {
-        matches!(self.kind, NodeKind::Element { .. })
+        matches!(
+            self.kind,
+            NodeKind::Element { .. } | NodeKind::EmptyLeaf { .. }
+        )
     }
 
     pub fn is_text(&self) -> bool {
@@ -331,9 +334,9 @@ impl Dom {
         Self {
             nodes: Vec::with_capacity(512),
             free_slots: Vec::with_capacity(128),
+            virtual_root: None,
             // attribute_table: Vec::with_capacity(512),
             // free_attrs: Vec::with_capacity(128),
-            virtual_root: None,
             attribute_store: SlotStore::with_capacity(512),
             character_data: SlotStore::with_capacity(512),
             tag_registry: HashMap::new(),
@@ -670,6 +673,22 @@ impl Dom {
 
     pub fn is_document_node(&self, node_id: DomNodeId) -> bool {
         self.virtual_root == Some(node_id)
+    }
+
+    pub fn document_element_id(&self) -> Option<DomNodeId> {
+        let root_id = self.virtual_root?;
+
+        let mut current_id = self.get_first_child(root_id)?;
+        loop {
+            if self
+                .get_node(current_id)
+                .is_some_and(|node| node.is_element())
+            {
+                return Some(current_id);
+            }
+
+            current_id = self.get_next_sibling(current_id)?;
+        }
     }
 
     pub fn ensure_tag_registered(&mut self, tag: u8) {

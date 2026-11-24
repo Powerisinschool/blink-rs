@@ -59,7 +59,7 @@ fn main() {
             font_size,
         },
     };
-    let arena = ctx.build_layout_tree(virtual_root_id, initial_space);
+    let arena = ctx.build_layout_tree(initial_space);
 
     // println!();
     // println!("Fragment arena: {:#?}", arena);

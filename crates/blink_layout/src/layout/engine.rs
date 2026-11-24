@@ -13,30 +13,26 @@ pub struct LayoutContext<'a, M: TextMeasurer + ?Sized> {
 }
 
 impl<'a, M: TextMeasurer + ?Sized> LayoutContext<'a, M> {
-    pub fn build_layout_tree(
-        &mut self,
-        virtual_root_id: DomNodeId,
-        initial_space: ConstraintSpace,
-    ) -> FragmentArena {
+    pub fn build_layout_tree(&mut self, initial_space: ConstraintSpace) -> FragmentArena {
         let mut arena = FragmentArena::new();
 
-        let bounding_rect = PhysicalRect::new(
-            PhysicalOffset::default(),
-            PhysicalSize::new(
-                initial_space.available_width(),
-                initial_space.available_height(),
-            ),
-        );
-        let virtual_root_fragment = LayoutFragment::new(
-            Some(virtual_root_id),
-            bounding_rect,
-            None, // No ComputedStyle for the virtual root
-            FragmentKind::Box,
-        );
+        // let bounding_rect = PhysicalRect::new(
+        //     PhysicalOffset::default(),
+        //     PhysicalSize::new(
+        //         initial_space.available_width(),
+        //         initial_space.available_height(),
+        //     ),
+        // );
+        // let virtual_root_fragment = LayoutFragment::new(
+        //     Some(virtual_root_id),
+        //     bounding_rect,
+        //     None, // No ComputedStyle for the virtual root
+        //     FragmentKind::Box,
+        // );
+        //
+        // arena.add_fragment(virtual_root_fragment);
 
-        arena.add_fragment(virtual_root_fragment);
-
-        let Some(root_id) = self.dom.get_first_child(virtual_root_id) else {
+        let Some(root_id) = self.dom.document_element_id() else {
             return arena;
         };
 
@@ -146,12 +142,20 @@ impl<'a, M: TextMeasurer + ?Sized> LayoutContext<'a, M> {
 
         while let Some(dom_child) = current_dom_child {
             let (child_margin, is_child_inline_level) = {
-                if self.dom.get_node(dom_child).is_some_and(|n| n.is_text()) {
+                let node = self
+                    .dom
+                    .get_node(dom_child)
+                    .expect("Invariant violation: DOM node should exist");
+                if node.is_text() {
                     (EdgeSizes::default(), true)
+                } else if !node.is_element() {
+                    current_dom_child = self.dom.get_next_sibling(dom_child);
+                    continue;
                 } else {
-                    let Some(style) = self.style_cache.get_for_node(dom_child) else {
-                        return (None, 0.0, 0.0);
-                    };
+                    let style = self
+                        .style_cache
+                        .get_for_node(dom_child)
+                        .expect("Invariant violation: StyleCache should have a style for every element node");
 
                     if style.display.is_none() {
                         current_dom_child = self.dom.get_next_sibling(dom_child);
@@ -279,7 +283,7 @@ mod tests {
             text_measurer: &FixedWidth {},
         };
 
-        let arena = ctx.build_layout_tree(root, space);
+        let arena = ctx.build_layout_tree(space);
 
         let parent_fragment = arena
             .get_fragment_by_dom_node(parent)
@@ -342,7 +346,7 @@ mod tests {
             text_measurer: &FixedWidth {},
         };
 
-        let arena = ctx.build_layout_tree(root, space);
+        let arena = ctx.build_layout_tree(space);
 
         let child1_fragment = arena
             .get_fragment_by_dom_node(child1)
