@@ -3,12 +3,14 @@ use blink_css::{CSSStyleRule, CSSStyleSheet};
 
 pub(super) fn cascade_properties(
     matched_rules: &mut Vec<&CSSStyleRule>,
+    parent_style: Option<&ComputedStyle>,
     stylesheet: &CSSStyleSheet,
     display: Display,
 ) -> ComputedStyle {
     matched_rules.sort_by_key(|a| a.specificity());
 
     let mut style = ComputedStyle::new(display, None, None);
+    let default_style = style.clone();
 
     for rule in matched_rules {
         let Some(props) = rule.properties(stylesheet) else {
@@ -19,19 +21,38 @@ pub(super) fn cascade_properties(
             let name = declaration.name.as_str();
             let value = declaration.value.as_str();
 
+            match value.trim() {
+                "inherit" => {
+                    inherit_property(&mut style, parent_style, &default_style, name);
+                    continue; // Skip further processing for inherited properties
+                }
+                "initial" => {
+                    inherit_property(&mut style, None, &default_style, name);
+                    continue; // Skip further processing for initial properties
+                }
+                _ => {}
+            }
+
             match name {
+                "all" if value.trim() == "initial" => {
+                    style = ComputedStyle::new(display, None, None);
+                }
                 "display" => {
                     if let Some(d) = parse_display(value) {
                         style.display = d;
                     }
                 }
                 "width" => {
-                    if let Some(w) = parse_px_value(value) {
+                    if value.trim() == "auto" {
+                        style.width = None;
+                    } else if let Some(w) = parse_px_value(value) {
                         style.width = Some(w);
                     }
                 }
                 "height" => {
-                    if let Some(h) = parse_px_value(value) {
+                    if value.trim() == "auto" {
+                        style.height = None;
+                    } else if let Some(h) = parse_px_value(value) {
                         style.height = Some(h);
                     }
                 }
@@ -50,6 +71,92 @@ pub(super) fn cascade_properties(
     }
 
     style
+}
+
+fn inherit_property(
+    style: &mut ComputedStyle,
+    parent_style: Option<&ComputedStyle>,
+    default_style: &ComputedStyle,
+    name: &str,
+) {
+    let source = parent_style.unwrap_or(default_style);
+
+    macro_rules! copy_field {
+        ($($field:tt)+) => {
+            style.$($field)+ = source.$($field)+.clone()
+        };
+    }
+
+    macro_rules! match_edges {
+        ($prefix:literal, $target:ident) => {
+            match name {
+                $prefix => copy_field!($target),
+                concat!($prefix, "-top") => copy_field!($target.top),
+                concat!($prefix, "-right") => copy_field!($target.right),
+                concat!($prefix, "-bottom") => copy_field!($target.bottom),
+                concat!($prefix, "-left") => copy_field!($target.left),
+                _ => return, // Not a relevant property for this edge
+            }
+        };
+    }
+
+    macro_rules! match_border_prefix_for_prop {
+        ($prefix:ident.$side:ident, $prefix_str:expr; $($prop:ident, $prop_str:literal),+) => {
+            if name == $prefix_str {
+                copy_field!($prefix.$side);
+                return;
+            }
+            $(
+                else if name == concat!($prefix_str, "-", $prop_str) {
+                    copy_field!($prefix.$side.$prop);
+                    return;
+                }
+            )+
+        };
+    }
+
+    macro_rules! match_borders {
+        ($($side:tt => $side_str:literal),+) => {
+            if name == "border" {
+                copy_field!(border);
+            } else if name == "border-width" {
+                $(
+                    copy_field!(border.$side.width);
+                )+
+            } else if name == "border-style" {
+                $(
+                    copy_field!(border.$side.style);
+                )+
+            } else if name == "border-color" {
+                $(
+                    copy_field!(border.$side.color);
+                )+
+            } else {
+                $(
+                    match_border_prefix_for_prop!(border.$side, concat!("border-", $side_str); width, "width", style, "style", color, "color");
+                )+
+            }
+        };
+    }
+
+    match name {
+        "all" => *style = source.clone(),
+        "display" => copy_field!(display),
+        "width" => copy_field!(width),
+        "height" => copy_field!(height),
+        _ if name.starts_with("margin") => {
+            match_edges!("margin", margin);
+        }
+        _ if name.starts_with("padding") => {
+            match_edges!("padding", padding);
+        }
+        _ if name.starts_with("border") => {
+            match_borders!(
+                top => "top", right => "right", bottom => "bottom", left => "left"
+            );
+        }
+        _ => {}
+    }
 }
 
 fn apply_edge_declaration(
@@ -157,7 +264,7 @@ fn apply_border_properties(name: &str, value: &str, border: &mut EdgeSizes<Borde
                 }
                 "-width" => {
                     if let Some(w) = parse_px_value(value) {
-                        side_target.width = w;
+                        side_target.width = w.max(0.0);
                     }
                 }
                 "-style" => {

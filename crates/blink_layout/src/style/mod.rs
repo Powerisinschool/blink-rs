@@ -137,15 +137,18 @@ pub fn compute_styles(
 
 fn compute_element_style(
     node_id: DomNodeId,
-    #[allow(unused_variables)] // TODO: Use parent_style for computing inherited properties
     parent_style: Option<&ComputedStyle>,
     dom: &Dom,
     stylesheet: &CSSStyleSheet,
 ) -> ComputedStyle {
     let mut rules = matching::get_matching_rules(node_id, dom, stylesheet);
 
-    let computed_style =
-        cascade::cascade_properties(&mut rules, stylesheet, default_display(node_id, dom));
+    let computed_style = cascade::cascade_properties(
+        &mut rules,
+        parent_style,
+        stylesheet,
+        default_display(node_id, dom),
+    );
 
     // Compute custom properties (CSS variables) based on parent style if available
     // Resolve var() in declarations using parent_style if necessary
