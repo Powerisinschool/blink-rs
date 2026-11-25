@@ -1,29 +1,30 @@
 use cssparser::{ParseError, Parser, Token};
-use std::collections::HashMap;
+
+#[derive(Debug, Clone)]
+pub struct Declaration {
+    pub name: String,
+    pub value: String,
+}
 
 #[derive(Debug, Default)]
 pub struct CSSStyleSheet {
     pub rules: Vec<CSSStyleRule>,
-    properties: Vec<HashMap<String, String>>,
+    declarations: Vec<Vec<Declaration>>,
 }
 
 impl CSSStyleSheet {
-    pub fn push_rules(
-        &mut self,
-        selectors: Vec<Vec<Selector>>,
-        properties: HashMap<String, String>,
-    ) {
+    pub fn push_rules(&mut self, selectors: Vec<Vec<Selector>>, declarations: Vec<Declaration>) {
         if selectors.is_empty() {
             return;
         }
 
-        let properties_id = self.properties.len();
-        self.properties.push(properties);
+        let properties_id = self.declarations.len();
+        self.declarations.push(declarations);
 
         for selector in selectors {
             self.rules.push(CSSStyleRule {
                 selector,
-                properties_map_id: properties_id,
+                declarations_store_id: properties_id,
             });
         }
     }
@@ -32,15 +33,34 @@ impl CSSStyleSheet {
 #[derive(Debug)]
 pub struct CSSStyleRule {
     pub selector: Vec<Selector>,
-    pub properties_map_id: usize,
+    pub declarations_store_id: usize,
 }
 
 impl CSSStyleRule {
-    pub fn properties<'a>(
+    pub fn properties<'a>(&self, stylesheet: &'a CSSStyleSheet) -> Option<&'a Vec<Declaration>> {
+        stylesheet.declarations.get(self.declarations_store_id)
+    }
+
+    pub fn contains_property(&self, stylesheet: &CSSStyleSheet, property_name: &str) -> bool {
+        if let Some(properties) = self.properties(stylesheet) {
+            properties.iter().any(|decl| decl.name == property_name)
+        } else {
+            false
+        }
+    }
+
+    pub fn get_property_values<'a>(
         &self,
         stylesheet: &'a CSSStyleSheet,
-    ) -> Option<&'a HashMap<String, String>> {
-        stylesheet.properties.get(self.properties_map_id)
+        property_name: &str,
+    ) -> Option<Vec<&'a str>> {
+        self.properties(stylesheet).map(|properties| {
+            properties
+                .iter()
+                .filter(|decl| decl.name == property_name)
+                .map(|decl| decl.value.as_str())
+                .collect()
+        })
     }
 }
 
@@ -60,7 +80,7 @@ impl CSSStyleSheet {
     pub fn new() -> Self {
         Self {
             rules: Vec::new(),
-            properties: Vec::new(),
+            declarations: Vec::new(),
         }
     }
 }
@@ -138,7 +158,7 @@ fn parse_next_rule(
 
         match token {
             Token::CurlyBracketBlock => {
-                let mut properties = HashMap::new();
+                let mut properties = vec![];
 
                 parser.parse_nested_block(|nested_parser| {
                     parse_properties(nested_parser, &mut properties)
@@ -236,7 +256,7 @@ fn parse_next_rule(
 
 fn parse_properties(
     parser: &mut Parser,
-    properties: &mut HashMap<String, String>,
+    properties: &mut Vec<Declaration>,
 ) -> Result<(), ParseError<CustomCSSParseError>> {
     while !parser.is_exhausted() {
         let name = match parser.next()? {
@@ -251,7 +271,11 @@ fn parse_properties(
         let mut value = String::new();
         serialize_value_tokens(parser, &mut value)?;
 
-        properties.insert(name, value.trim().to_string());
+        let declaration = Declaration {
+            name: name.trim().to_string(),
+            value: value.trim().to_string(),
+        };
+        properties.push(declaration);
     }
 
     Ok(())
@@ -327,13 +351,11 @@ mod tests {
             stylesheet.rules[0].selector[0],
             Selector::Tag("p".to_string())
         );
-        assert_eq!(
+        assert!(
             stylesheet.rules[0]
-                .properties(&stylesheet)
+                .get_property_values(&stylesheet, "color")
                 .unwrap()
-                .get("color")
-                .unwrap(),
-            "red"
+                .contains(&"red")
         );
     }
 
@@ -343,21 +365,17 @@ mod tests {
         parse_css_into_stylesheet("div { width: 100px; height: 50px; }", &mut stylesheet);
 
         assert_eq!(stylesheet.rules.len(), 1);
-        assert_eq!(
+        assert!(
             stylesheet.rules[0]
-                .properties(&stylesheet)
+                .get_property_values(&stylesheet, "width")
                 .unwrap()
-                .get("width")
-                .unwrap(),
-            "100px"
+                .contains(&"100px")
         );
-        assert_eq!(
+        assert!(
             stylesheet.rules[0]
-                .properties(&stylesheet)
+                .get_property_values(&stylesheet, "height")
                 .unwrap()
-                .get("height")
-                .unwrap(),
-            "50px"
+                .contains(&"50px")
         );
     }
 
@@ -394,13 +412,11 @@ mod tests {
             stylesheet.rules[0].selector[0],
             Selector::PseudoClass("root".to_string())
         );
-        assert_eq!(
+        assert!(
             stylesheet.rules[0]
-                .properties(&stylesheet)
+                .get_property_values(&stylesheet, "--main-color")
                 .unwrap()
-                .get("--main-color")
-                .unwrap(),
-            "#ff0000"
+                .contains(&"#ff0000"),
         );
     }
 
@@ -419,13 +435,11 @@ mod tests {
             stylesheet.rules[0].selector[1],
             Selector::PseudoClass("hover".to_string())
         );
-        assert_eq!(
+        assert!(
             stylesheet.rules[0]
-                .properties(&stylesheet)
+                .get_property_values(&stylesheet, "text-decoration")
                 .unwrap()
-                .get("text-decoration")
-                .unwrap(),
-            "underline"
+                .contains(&"underline"),
         );
     }
 
@@ -437,21 +451,17 @@ mod tests {
             &mut stylesheet,
         );
 
-        assert_eq!(
+        assert!(
             stylesheet.rules[0]
-                .properties(&stylesheet)
+                .get_property_values(&stylesheet, "border")
                 .unwrap()
-                .get("border")
-                .unwrap(),
-            "1px solid black"
+                .contains(&"1px solid black"),
         );
-        assert_eq!(
+        assert!(
             stylesheet.rules[0]
-                .properties(&stylesheet)
+                .get_property_values(&stylesheet, "background-color")
                 .unwrap()
-                .get("background-color")
-                .unwrap(),
-            "#f3f3f3"
+                .contains(&"#f3f3f3"),
         );
     }
 
@@ -469,13 +479,11 @@ mod tests {
             stylesheet.rules[0].selector[0],
             Selector::Tag("h1".to_string())
         );
-        assert_eq!(
+        assert!(
             stylesheet.rules[0]
-                .properties(&stylesheet)
+                .get_property_values(&stylesheet, "font-size")
                 .unwrap()
-                .get("font-size")
-                .unwrap(),
-            "24px"
+                .contains(&"24px"),
         );
 
         assert_eq!(stylesheet.rules[1].selector.len(), 1);
@@ -483,13 +491,11 @@ mod tests {
             stylesheet.rules[1].selector[0],
             Selector::Tag("p".to_string())
         );
-        assert_eq!(
+        assert!(
             stylesheet.rules[1]
-                .properties(&stylesheet)
+                .get_property_values(&stylesheet, "color")
                 .unwrap()
-                .get("color")
-                .unwrap(),
-            "blue"
+                .contains(&"blue"),
         );
     }
 }

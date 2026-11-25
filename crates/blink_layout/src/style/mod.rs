@@ -222,6 +222,28 @@ mod tests {
     }
 
     #[test]
+    fn computes_styles_for_descendants_of_display_none() {
+        let mut dom = Dom::new();
+
+        let parent = dom.add_element(get_tag_index("div"), None);
+        let child = dom.add_element(get_tag_index("span"), None);
+
+        dom.set_parent(child, parent).unwrap();
+        dom.set_first_child(parent, Some(child)).unwrap();
+
+        let mut stylesheet = CSSStyleSheet::new();
+        parse_css_into_stylesheet(
+            "div { display: none; } span { width: 100px; }",
+            &mut stylesheet,
+        );
+
+        let styles = compute_styles(parent, &dom, &stylesheet, None);
+
+        assert_eq!(styles.get_for_node(parent).unwrap().display, Display::None);
+        assert_eq!(styles.get_for_node(child).unwrap().width, Some(100.0));
+    }
+
+    #[test]
     fn compute_style_cascade_overrides() {
         let mut dom = Dom::new();
         dom.ensure_tag_registered(DIV_TAG_INDEX);
@@ -306,10 +328,19 @@ mod tests {
     #[test]
     fn test_compute_style_margin_and_padding_cascade() {
         let mut dom = Dom::new();
-        dom.ensure_tag_registered(DIV_TAG_INDEX);
+
+        let root = dom.add_element(0, None); // Root node with tag index 0
+        dom.set_virtual_root(root)
+            .expect("Failed to set virtual root");
 
         let attrs = vec![make_attr("class", "box")].into_boxed_slice();
+        dom.ensure_tag_registered(DIV_TAG_INDEX);
         let div_node = dom.add_element(DIV_TAG_INDEX, Some(attrs));
+
+        dom.set_first_child(root, Some(div_node))
+            .expect("Failed to set first child");
+        dom.set_parent(div_node, root)
+            .expect("Failed to set parent");
 
         let mut stylesheet = CSSStyleSheet::new();
         let css = "
@@ -326,7 +357,7 @@ mod tests {
         ";
         parse_css_into_stylesheet(css, &mut stylesheet);
 
-        let style_cache = compute_styles(div_node, &dom, &stylesheet, None);
+        let style_cache = compute_styles(root, &dom, &stylesheet, None);
 
         let computed = style_cache
             .get_for_node(div_node)

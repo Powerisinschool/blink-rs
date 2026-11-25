@@ -11,163 +11,167 @@ pub(super) fn cascade_properties(
     let mut style = ComputedStyle::new(display, None, None);
 
     for rule in matched_rules {
-        let props = if let Some(props) = rule.properties(stylesheet) {
-            props
-        } else {
+        let Some(props) = rule.properties(stylesheet) else {
             continue; // Skip rules without properties
         };
 
-        if let Some(d) = props.get("display").and_then(|v| parse_display(v)) {
-            style.display = d;
+        for declaration in props {
+            let name = declaration.name.as_str();
+            let value = declaration.value.as_str();
+
+            match name {
+                "display" => {
+                    if let Some(d) = parse_display(value) {
+                        style.display = d;
+                    }
+                }
+                "width" => {
+                    if let Some(w) = parse_px_value(value) {
+                        style.width = Some(w);
+                    }
+                }
+                "height" => {
+                    if let Some(h) = parse_px_value(value) {
+                        style.height = Some(h);
+                    }
+                }
+                name if name.starts_with("margin") => {
+                    apply_edge_declaration(name, "margin", value, true, &mut style.margin);
+                }
+                name if name.starts_with("padding") => {
+                    apply_edge_declaration(name, "padding", value, false, &mut style.padding);
+                }
+                name if name.starts_with("border") => {
+                    apply_border_properties(name, value, &mut style.border);
+                }
+                _ => {}
+            }
         }
-
-        if let Some(w) = props.get("width") {
-            style.width = parse_px_value(w);
-        }
-
-        if let Some(h) = props.get("height") {
-            style.height = parse_px_value(h);
-        }
-
-        apply_edge_properties(
-            props,
-            "margin",
-            ["margin-top", "margin-right", "margin-bottom", "margin-left"],
-            true,
-            &mut style.margin,
-        );
-
-        apply_edge_properties(
-            props,
-            "padding",
-            [
-                "padding-top",
-                "padding-right",
-                "padding-bottom",
-                "padding-left",
-            ],
-            false,
-            &mut style.padding,
-        );
-
-        apply_border_properties(props, &mut style.border)
     }
 
     style
 }
 
-fn apply_edge_properties(
-    props: &std::collections::HashMap<String, String>,
-    shorthand: &str,
-    sides: [&str; 4],
+fn apply_edge_declaration(
+    name: &str,
+    prefix: &str,
+    value: &str,
     allow_negative: bool,
     target: &mut EdgeSizes<f32>,
 ) {
     let clamp = |v: f32| if allow_negative { v } else { v.max(0.0) };
-    if let Some(all) = props
-        .get(shorthand)
-        .and_then(|v| parse_edge_sizes(v, allow_negative))
-    {
-        *target = all;
-    }
-    if let Some(v) = props.get(sides[0]).and_then(|v| parse_px_value(v)) {
-        target.top = clamp(v);
-    }
-    if let Some(v) = props.get(sides[1]).and_then(|v| parse_px_value(v)) {
-        target.right = clamp(v);
-    }
-    if let Some(v) = props.get(sides[2]).and_then(|v| parse_px_value(v)) {
-        target.bottom = clamp(v);
-    }
-    if let Some(v) = props.get(sides[3]).and_then(|v| parse_px_value(v)) {
-        target.left = clamp(v);
+
+    match name.strip_prefix(prefix) {
+        Some("") => {
+            if let Some(all) = parse_edge_sizes(value, allow_negative) {
+                *target = all;
+            }
+        }
+        Some("-top") => {
+            if let Some(v) = parse_px_value(value) {
+                target.top = clamp(v);
+            }
+        }
+        Some("-right") => {
+            if let Some(v) = parse_px_value(value) {
+                target.right = clamp(v);
+            }
+        }
+        Some("-bottom") => {
+            if let Some(v) = parse_px_value(value) {
+                target.bottom = clamp(v);
+            }
+        }
+        Some("-left") => {
+            if let Some(v) = parse_px_value(value) {
+                target.left = clamp(v);
+            }
+        }
+        _ => (), // Not a relevant property for this edge
     }
 }
 
-fn apply_border_properties(
-    props: &std::collections::HashMap<String, String>,
-    border: &mut EdgeSizes<BorderSide>,
-) {
-    if let Some(side) = props.get("border").and_then(|v| parse_border_shorthand(v)) {
-        *border = EdgeSizes::all(side);
-    }
-    if let Some(w) = props
-        .get("border-width")
-        .and_then(|v| parse_edge_sizes(v, false))
-    {
-        border.top.width = w.top;
-        border.right.width = w.right;
-        border.bottom.width = w.bottom;
-        border.left.width = w.left;
-    }
-    if let Some(s) = props.get("border-style")
-        && let Some(parsed) = s
-            .split_whitespace()
-            .map(parse_border_style)
-            .collect::<Option<Vec<_>>>()
-        && let Some(edges) = expand_four_sides(&parsed)
-    {
-        border.top.style = edges.top;
-        border.right.style = edges.right;
-        border.bottom.style = edges.bottom;
-        border.left.style = edges.left;
-    }
-    if let Some(c) = props.get("border-color")
-        && let Some(parsed) = c
-            .split_whitespace()
-            .map(parse_border_color)
-            .collect::<Option<Vec<_>>>()
-        && let Some(edges) = expand_four_sides(&parsed)
-    {
-        border.top.color = edges.top;
-        border.right.color = edges.right;
-        border.bottom.color = edges.bottom;
-        border.left.color = edges.left;
-    }
+fn apply_border_properties(name: &str, value: &str, border: &mut EdgeSizes<BorderSide>) {
+    let Some(rest) = name.strip_prefix("border") else {
+        return; // Not a border property
+    };
 
-    let sides = [
-        (
-            "border-top",
-            "border-top-width",
-            "border-top-style",
-            "border-top-color",
-            &mut border.top,
-        ),
-        (
-            "border-right",
-            "border-right-width",
-            "border-right-style",
-            "border-right-color",
-            &mut border.right,
-        ),
-        (
-            "border-bottom",
-            "border-bottom-width",
-            "border-bottom-style",
-            "border-bottom-color",
-            &mut border.bottom,
-        ),
-        (
-            "border-left",
-            "border-left-width",
-            "border-left-style",
-            "border-left-color",
-            &mut border.left,
-        ),
-    ];
+    match rest {
+        "" => {
+            if let Some(side) = parse_border_shorthand(value) {
+                *border = EdgeSizes::all(side);
+            }
+        }
+        "-width" => {
+            if let Some(w) = parse_edge_sizes(value, false) {
+                border.top.width = w.top;
+                border.right.width = w.right;
+                border.bottom.width = w.bottom;
+                border.left.width = w.left;
+            }
+        }
+        "-style" => {
+            if let Some(parsed) = value
+                .split_whitespace()
+                .map(parse_border_style)
+                .collect::<Option<Vec<_>>>()
+                && let Some(edges) = expand_four_sides(&parsed)
+            {
+                border.top.style = edges.top;
+                border.right.style = edges.right;
+                border.bottom.style = edges.bottom;
+                border.left.style = edges.left;
+            }
+        }
+        "-color" => {
+            if let Some(parsed) = value
+                .split_whitespace()
+                .map(parse_border_color)
+                .collect::<Option<Vec<_>>>()
+                && let Some(edges) = expand_four_sides(&parsed)
+            {
+                border.top.color = edges.top;
+                border.right.color = edges.right;
+                border.bottom.color = edges.bottom;
+                border.left.color = edges.left;
+            }
+        }
+        _ => {
+            let (side_rest, side_target) = if let Some(r) = rest.strip_prefix("-top") {
+                (r, &mut border.top)
+            } else if let Some(r) = rest.strip_prefix("-right") {
+                (r, &mut border.right)
+            } else if let Some(r) = rest.strip_prefix("-bottom") {
+                (r, &mut border.bottom)
+            } else if let Some(r) = rest.strip_prefix("-left") {
+                (r, &mut border.left)
+            } else {
+                return; // Not a relevant property for border
+            };
 
-    for (shorthand, w_key, s_key, c_key, target) in sides {
-        if let Some(side) = props.get(shorthand).and_then(|v| parse_border_shorthand(v)) {
-            *target = side;
-        }
-        if let Some(w) = props.get(w_key).and_then(|v| parse_px_value(v)) {
-            target.width = w.max(0.0);
-        }
-        if let Some(s) = props.get(s_key).and_then(|v| parse_border_style(v)) {
-            target.style = s;
-        }
-        if let Some(c) = props.get(c_key).and_then(|v| parse_border_color(v)) {
-            target.color = c;
+            match side_rest {
+                "" => {
+                    if let Some(side) = parse_border_shorthand(value) {
+                        *side_target = side;
+                    }
+                }
+                "-width" => {
+                    if let Some(w) = parse_px_value(value) {
+                        side_target.width = w;
+                    }
+                }
+                "-style" => {
+                    if let Some(s) = parse_border_style(value) {
+                        side_target.style = s;
+                    }
+                }
+                "-color" => {
+                    if let Some(c) = parse_border_color(value) {
+                        side_target.color = c;
+                    }
+                }
+                _ => (), // Not a relevant property for this border edge
+            }
         }
     }
 }
