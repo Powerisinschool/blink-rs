@@ -89,6 +89,7 @@ impl<'a> StyleContext<'a> {
         let computed_style = cascade::cascade_properties(
             &mut rules,
             parent_style,
+            node_id.slot(),
             self,
             self.default_display(node_id),
         );

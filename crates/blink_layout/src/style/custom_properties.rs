@@ -1,8 +1,13 @@
+use crate::style::matching;
+use blink_css::CSSStyleSheet;
+use blink_dom::{Dom, DomNodeId};
+use std::borrow::Cow;
+use std::collections::HashMap;
 use string_interner::StringInterner;
 use string_interner::backend::StringBackend;
 use string_interner::symbol::SymbolU32;
 
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct PropId(SymbolU32);
 
 pub struct PropInterner {
@@ -45,8 +50,8 @@ pub enum ComputedCustomPropertyValue {
     Value(Box<str>),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct CustomProperty {
-    #[allow(unused)]
     id: PropId,
     value: ComputedCustomPropertyValue,
 }
@@ -60,9 +65,10 @@ impl CustomProperty {
     }
 }
 
+/// Entries in each block should be sorted by PropId for binary search functionality.
 pub struct CustomPropTable {
-    parent: Vec<u32>,
-    props: Vec<Option<Box<[CustomProperty]>>>,
+    pub(crate) parent: Vec<u32>,
+    pub(crate) props: Vec<Option<Box<[CustomProperty]>>>,
 }
 
 impl Default for CustomPropTable {
@@ -80,23 +86,204 @@ impl CustomPropTable {
         }
     }
 
-    #[allow(unused)]
-    pub(crate) fn add_stub(&mut self, prop_id: PropId) {
-        self.parent.push(0);
-        self.props.push(Some(
-            vec![CustomProperty {
-                id: prop_id,
-                value: ComputedCustomPropertyValue::Value("100px".into()),
-            }]
-            .into_boxed_slice(),
-        ));
+    pub fn build(
+        root: DomNodeId,
+        dom: &Dom,
+        stylesheet: &CSSStyleSheet,
+        interner: &mut PropInterner,
+    ) -> Self {
+        let nodes_count = dom.nodes_len();
+        let mut table = CustomPropTable {
+            parent: vec![0; nodes_count],
+            props: vec![None; nodes_count],
+        };
+
+        let mut stack = vec![(root, 0)];
+
+        while let Some((node_id, parent_slot)) = stack.pop() {
+            let slot = node_id.slot();
+            table.parent[slot] = parent_slot as u32;
+
+            let mut local_props: HashMap<PropId, &str> = HashMap::new();
+            let mut rules = matching::get_matching_rules(node_id, dom, stylesheet);
+            rules.sort_by_key(|k| k.specificity());
+
+            // println!("Node {:?} matched rules: {:?}", node_id, rules);
+
+            for rule in rules {
+                let Some(declarations) = rule.custom_properties(stylesheet) else {
+                    continue;
+                };
+                for decl in declarations {
+                    // println!("Found custom property: {} = {}", decl.name, decl.value);
+                    let id = interner.intern(&decl.name);
+                    // Later declarations in the cascade overwrite earlier ones.
+                    // (Since we're sorting matched `rules` by specificity,
+                    // this HashMap insert naturally handles the cascade).
+                    local_props.insert(id, decl.value.as_str());
+                }
+            }
+
+            if !local_props.is_empty() {
+                let mut resolved_props = Vec::with_capacity(local_props.len());
+
+                for (id, raw_value) in &local_props {
+                    let resolved = resolve_custom_property_value(
+                        raw_value,
+                        &local_props,
+                        &table,
+                        slot,
+                        interner,
+                    );
+
+                    let final_value = match resolved {
+                        Some(value) => ComputedCustomPropertyValue::Value(value.into()),
+                        None => ComputedCustomPropertyValue::Invalid,
+                    };
+
+                    resolved_props.push(CustomProperty {
+                        id: *id,
+                        value: final_value,
+                    })
+                }
+
+                resolved_props.sort_by_key(|p| p.id);
+                table.props[slot] = Some(resolved_props.into_boxed_slice());
+            }
+
+            let mut child = dom.get_first_child(node_id);
+            while let Some(c) = child {
+                stack.push((c, slot));
+                child = dom.get_next_sibling(c);
+            }
+        }
+
+        table
     }
 
+    // #[allow(unused)]
+    // pub(crate) fn add_stub(&mut self, prop_id: PropId) {
+    //     self.parent.push(0);
+    //     self.props.push(Some(
+    //         vec![CustomProperty {
+    //             id: prop_id,
+    //             value: ComputedCustomPropertyValue::Value("100px".into()),
+    //         }]
+    //         .into_boxed_slice(),
+    //     ));
+    // }
+
     // Returns the first occurrence of the custom property in the current node or its ancestors.
-    pub fn lookup(&self, _node: usize, _id: PropId) -> Option<&CustomProperty> {
-        // TODO: Implement actual lookup logic
-        self.props
-            .first()
-            .and_then(|props| props.as_ref().and_then(|props| props.first()))
+    pub fn lookup(&self, node: usize, id: PropId) -> Option<&str> {
+        let mut curr = node;
+
+        loop {
+            if let Some(block) = &self.props[curr]
+                // && let Ok(pos) = block.binary_search_by_key(&id, |p| p.id)
+                && let Some(pos) = block.iter().position(|p| p.id == id)
+            {
+                return block[pos].value();
+            }
+            if curr == 0 {
+                return None;
+            }
+            let p = self.parent[curr] as usize;
+            debug_assert!(
+                p < curr,
+                "CustomPropTable invariant violated: parent index {} >= child index {}",
+                p,
+                curr
+            );
+            curr = p;
+        }
     }
+}
+
+/// TODO: Implement `var(--a, fallback)` and recursive cycle detection.
+fn resolve_custom_property_value(
+    raw_value: &str,
+    local_props: &HashMap<PropId, &str>,
+    table: &CustomPropTable,
+    current_slot: usize,
+    interner: &PropInterner,
+) -> Option<String> {
+    if !raw_value.starts_with("var(") {
+        return Some(raw_value.trim().to_string());
+    }
+
+    let mut result = String::with_capacity(raw_value.len());
+    let mut rest = raw_value;
+
+    while let Some(start) = rest.find("var(") {
+        result.push_str(&rest[..start]);
+
+        let after_start = &rest[start + 4..];
+        let Some(end) = after_start.find(')') else {
+            // Malformed var() - missing closing paren
+            return None;
+        };
+
+        let var_name = after_start[..end].trim();
+
+        let id = interner.get(var_name)?;
+
+        let value = if let Some(local_val) = local_props.get(&id) {
+            Some(local_val.to_string())
+        } else {
+            table.lookup(current_slot, id).map(|s| s.to_string())
+        };
+
+        let v = value?;
+        result.push_str(&v);
+
+        rest = &after_start[end + 1..];
+    }
+
+    result.push_str(rest);
+    Some(result)
+}
+
+pub fn resolve_var_in_property<'a>(
+    value: &'a str,
+    node_slot: usize,
+    table: &CustomPropTable,
+    interner: &PropInterner,
+) -> Cow<'a, str> {
+    if !value.contains("var(") {
+        return Cow::Borrowed(value);
+    }
+
+    let mut result = String::with_capacity(value.len());
+    let mut rest = value;
+
+    while let Some(start) = rest.find("var(") {
+        result.push_str(&rest[..start]);
+
+        let after_start = &rest[start + 4..];
+        // Naive: first ')' wins. Punt on fallbacks `var(--a, red)` for now.
+        let Some(end) = after_start.find(')') else {
+            return Cow::Borrowed(value); // Malformed
+        };
+
+        let var_name = after_start[..end].trim();
+
+        let Some(id) = interner.get(var_name) else {
+            return Cow::Borrowed(value); // Unknown variable
+        };
+
+        match table.lookup(node_slot, id) {
+            Some(resolved) => result.push_str(resolved),
+            None => {
+                // Property is invalid at computed-value time.
+                // Returning the original means parse_px_value() will fail
+                // and the declaration will be skipped by the cascade.
+                return Cow::Borrowed(value);
+            }
+        }
+
+        rest = &after_start[end + 1..];
+    }
+
+    result.push_str(rest);
+    Cow::Owned(result)
 }

@@ -2,11 +2,13 @@ use super::types::{
     BorderSide, BorderStyle, Color, ComputedStyle, Display, EdgeSizes, SpecifiedColor,
 };
 use crate::style::context::StyleContext;
+use crate::style::custom_properties::resolve_var_in_property;
 use blink_css::CSSStyleRule;
 
 pub(super) fn cascade_properties(
     matched_rules: &mut Vec<&CSSStyleRule>,
     parent_style: Option<&ComputedStyle>,
+    node_id: usize,
     ctx: &StyleContext,
     display: Display,
 ) -> ComputedStyle {
@@ -38,19 +40,13 @@ pub(super) fn cascade_properties(
             }
 
             let value = if value.contains("var(") {
-                // Quick and dirty stub for the test:
-                if value.contains("var(--w)")
-                    && let Some(prop_id) = ctx.prop_interner.get("--w")
-                    && let Some(prop) = ctx.custom_prop_table.lookup(0, prop_id)
-                    && let Some(val) = prop.value()
-                {
-                    val // "100px"
-                } else {
-                    value
-                }
+                resolve_var_in_property(value, node_id, ctx.custom_prop_table, ctx.prop_interner)
+                    .to_string()
             } else {
-                value
+                value.to_string()
             };
+
+            let value = value.as_str();
 
             match name {
                 "all" if value.trim() == "initial" => {

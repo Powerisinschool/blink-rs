@@ -514,6 +514,24 @@ mod tests {
     }
 
     #[test]
+    fn splits_normal_and_custom_properties_at_parse_time() {
+        let mut ss = CSSStyleSheet::new();
+        parse_css_into_stylesheet(
+            "div { width: 100px; --w: 100px; height: 50px; --h: 50px }",
+            &mut ss,
+        );
+
+        let rule = &ss.rules[0];
+        let normal = rule.properties(&ss).unwrap();
+        let custom = rule.custom_properties(&ss).unwrap();
+
+        assert_eq!(normal.len(), 2, "normal properties must not include --*");
+        assert_eq!(custom.len(), 2, "custom properties must only contain --*");
+        assert!(normal.iter().all(|d| !d.name.starts_with("--")));
+        assert!(custom.iter().all(|d| d.name.starts_with("--")));
+    }
+
+    #[test]
     fn test_multiple_rules() {
         let mut stylesheet = CSSStyleSheet::new();
         parse_css_into_stylesheet(

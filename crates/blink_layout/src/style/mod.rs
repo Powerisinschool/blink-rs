@@ -212,16 +212,74 @@ mod tests {
             &mut stylesheet,
         );
 
-        let mut custom_prop_table = CustomPropTable::new();
         let mut prop_interner = PropInterner::new();
-        let prop_id = prop_interner.intern("--w");
-        custom_prop_table.add_stub(prop_id); // Add a stub for the parent node
+        let custom_prop_table = CustomPropTable::build(root, &dom, &stylesheet, &mut prop_interner);
+
+        // DIAGNOSTIC — prints what actually got captured
+        // eprintln!("interner.is_empty() = {}", prop_interner.is_empty());
+        // eprintln!("table.props[0] = {:?}", custom_prop_table.props[0]);
+        // eprintln!("table.props[1] = {:?}", custom_prop_table.props[1]);
+        // eprintln!("table.props[2] = {:?}", custom_prop_table.props[2]);
+        // eprintln!("table.parent = {:?}", custom_prop_table.parent);
 
         let ctx = StyleContext::new(&dom, &stylesheet, &custom_prop_table, &prop_interner);
         let style_cache = ctx.compute_styles(root, None);
 
         assert_eq!(style_cache.get_for_node(child).unwrap().width, Some(100.0));
     }
+
+    // #[test]
+    // fn resolves_chained_and_cyclic_custom_properties() {
+    //     let mut dom = Dom::new();
+    //     let root = dom.add_element(0, None);
+    //
+    //     // Add a child so we test inheritance + chaining together
+    //     let child = dom.add_element(get_tag_index("div"), None);
+    //     dom.set_parent(child, root).unwrap();
+    //     dom.set_first_child(root, Some(child)).unwrap();
+    //
+    //     let mut stylesheet = CSSStyleSheet::new();
+    //     let css = "
+    //     :root {
+    //         --a: red;
+    //         --b: var(--a);       /* Chained: should resolve to 'red' */
+    //         --c: var(--b);       /* Chained: should resolve to 'red' */
+    //         --cycle1: var(--cycle2);
+    //         --cycle2: var(--cycle1); /* Cycle: should be Invalid */
+    //     }
+    //     div {
+    //         color: var(--b);         /* Should resolve to 'red' */
+    //         background-color: var(--cycle1); /* Should be Invalid/ignored */
+    //     }
+    // ";
+    //     parse_css_into_stylesheet(css, &mut stylesheet);
+    //
+    //     let mut interner = PropInterner::new();
+    //     let table = CustomPropTable::build(root, &dom, &stylesheet, &mut interner);
+    //
+    //     // Check the table directly first
+    //     let a_id = interner.get("--a").unwrap();
+    //     let b_id = interner.get("--b").unwrap();
+    //     let c_id = interner.get("--c").unwrap();
+    //     let cy1_id = interner.get("--cycle1").unwrap();
+    //
+    //     assert_eq!(table.lookup(child.slot(), a_id), Some("red"));
+    //     assert_eq!(
+    //         table.lookup(child.slot(), b_id),
+    //         Some("red"),
+    //         "Chained var should resolve"
+    //     );
+    //     assert_eq!(
+    //         table.lookup(child.slot(), c_id),
+    //         Some("red"),
+    //         "Chained var should resolve"
+    //     );
+    //     assert_eq!(
+    //         table.lookup(child.slot(), cy1_id),
+    //         None,
+    //         "Cyclic var should be Invalid"
+    //     );
+    // }
 
     #[test]
     fn computes_styles_for_descendants_of_display_none() {
