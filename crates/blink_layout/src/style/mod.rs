@@ -1,6 +1,6 @@
 mod cascade;
 mod matching;
-mod types;
+pub mod types;
 
 use blink_core::generator::Generation;
 pub use types::{
@@ -17,6 +17,8 @@ pub type ComputedStyleId = blink_core::base::Id<ComputedStyleTag>;
 #[derive(Debug)]
 pub struct StyleCache {
     styles: Vec<ComputedStyle>,
+    #[allow(unused)]
+    bloom_filter: u64, // A filter to quickly check if a custom property exists across all nodes.
     node_cache: Vec<Option<(Generation, ComputedStyleId)>>,
 }
 
@@ -30,6 +32,7 @@ impl StyleCache {
     pub fn new(size: usize) -> Self {
         Self {
             styles: Vec::with_capacity(size),
+            bloom_filter: 0,
             node_cache: vec![None; size],
         }
     }
@@ -180,6 +183,7 @@ fn default_display(node_id: DomNodeId, dom: &Dom) -> Display {
 mod tests {
     use super::*;
     use crate::style::matching::tests::{DIV_TAG_INDEX, make_attr};
+    use crate::style::types::SpecifiedColor;
     use blink_css::parse_css_into_stylesheet;
     use blink_dom::get_tag_index;
 
@@ -223,6 +227,65 @@ mod tests {
         assert_eq!(styles.get_for_node(parent).unwrap().width, Some(200.0));
         assert_eq!(styles.get_for_node(child).unwrap().width, Some(100.0));
     }
+
+    #[test]
+    fn inherits_from_parent() {
+        let mut dom = Dom::new();
+
+        let root = dom.add_element(0, None);
+
+        let parent_attrs = vec![make_attr("id", "parent")].into_boxed_slice();
+        let parent = dom.add_element(get_tag_index("div"), Some(parent_attrs));
+
+        let child_attrs = vec![make_attr("id", "child")].into_boxed_slice();
+        let child = dom.add_element(get_tag_index("div"), Some(child_attrs));
+
+        dom.set_parent(child, parent).expect("Failed to set parent");
+        dom.set_first_child(parent, Some(child))
+            .expect("Failed to set first child");
+        dom.set_parent(parent, root).expect("Failed to set parent");
+        dom.set_first_child(root, Some(parent))
+            .expect("Failed to set first child");
+
+        let mut stylesheet = CSSStyleSheet::new();
+        parse_css_into_stylesheet(
+            "#parent { width: 300px; height: 50px; } #child { width: 50px; all: inherit; height: 150px; }",
+            &mut stylesheet,
+        );
+
+        let styles = compute_styles(root, &dom, &stylesheet, None);
+
+        assert_eq!(styles.get_for_node(parent).unwrap().width, Some(300.0));
+        assert_eq!(styles.get_for_node(parent).unwrap().height, Some(50.0));
+        assert_eq!(styles.get_for_node(child).unwrap().width, Some(300.0));
+        assert_eq!(styles.get_for_node(child).unwrap().height, Some(150.0));
+    }
+
+    // #[test]
+    // fn inherits_custom_properties() {
+    //     let mut dom = Dom::new();
+    //
+    //     let root = dom.add_element(0, None);
+    //     let parent = dom.add_element(get_tag_index("div"), None);
+    //     let child = dom.add_element(get_tag_index("div"), None);
+    //
+    //     dom.set_parent(child, parent).expect("Failed to set parent");
+    //     dom.set_first_child(parent, Some(child))
+    //         .expect("Failed to set first child");
+    //     dom.set_parent(parent, root).expect("Failed to set parent");
+    //     dom.set_first_child(root, Some(parent))
+    //         .expect("Failed to set first child");
+    //
+    //     let mut stylesheet = CSSStyleSheet::new();
+    //     parse_css_into_stylesheet(
+    //         ":root { --w: 100px } div { width: var(--w) }",
+    //         &mut stylesheet,
+    //     );
+    //
+    //     let styles = compute_styles(root, &dom, &stylesheet, None);
+    //
+    //     assert_eq!(styles.get_for_node(child).unwrap().width, Some(100.0));
+    // }
 
     #[test]
     fn computes_styles_for_descendants_of_display_none() {
@@ -291,7 +354,7 @@ mod tests {
     }
 
     #[test]
-    fn test_compute_root_overrides_direct_tag() {
+    fn compute_root_overrides_direct_tag() {
         let mut dom = Dom::new();
         dom.ensure_tag_registered(DIV_TAG_INDEX);
 
@@ -329,7 +392,7 @@ mod tests {
     }
 
     #[test]
-    fn test_compute_style_margin_and_padding_cascade() {
+    fn compute_style_margin_and_padding_cascade() {
         let mut dom = Dom::new();
 
         let root = dom.add_element(0, None); // Root node with tag index 0
@@ -387,7 +450,7 @@ mod tests {
     }
 
     #[test]
-    fn test_compute_style_border_cascade_and_effective_widths() {
+    fn compute_style_border_cascade_and_effective_widths() {
         let mut dom = Dom::new();
         dom.ensure_tag_registered(DIV_TAG_INDEX);
 
@@ -423,7 +486,7 @@ mod tests {
             BorderSide {
                 width: 6.0,
                 style: BorderStyle::Solid,
-                color: Some(Color {
+                color: SpecifiedColor::Color(Color {
                     r: 0,
                     g: 255,
                     b: 0,
@@ -436,7 +499,7 @@ mod tests {
             BorderSide {
                 width: 4.0,
                 style: BorderStyle::None,
-                color: Some(Color {
+                color: SpecifiedColor::Color(Color {
                     r: 0,
                     g: 0,
                     b: 255,
@@ -449,7 +512,7 @@ mod tests {
             BorderSide {
                 width: 1.0,
                 style: BorderStyle::Solid,
-                color: None,
+                color: SpecifiedColor::CurrentColor,
             }
         );
         assert_eq!(
@@ -457,7 +520,7 @@ mod tests {
             BorderSide {
                 width: 10.0,
                 style: BorderStyle::Solid,
-                color: Some(Color {
+                color: SpecifiedColor::Color(Color {
                     r: 0,
                     g: 0,
                     b: 255,

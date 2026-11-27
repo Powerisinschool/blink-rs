@@ -77,6 +77,29 @@ pub struct Color {
     pub a: u8,
 }
 
+impl Color {
+    pub fn new(r: u8, g: u8, b: u8, a: u8) -> Self {
+        Color { r, g, b, a }
+    }
+
+    pub const TRANSPARENT: Self = Color {
+        r: 0,
+        g: 0,
+        b: 0,
+        a: 0,
+    };
+
+    pub fn is_transparent(&self) -> bool {
+        self.a == 0
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum SpecifiedColor {
+    CurrentColor,
+    Color(Color),
+}
+
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum BorderStyle {
     #[default]
@@ -86,7 +109,7 @@ pub enum BorderStyle {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct BorderSide {
-    pub color: Option<Color>,
+    pub color: SpecifiedColor,
     pub width: f32,
     pub style: BorderStyle,
 }
@@ -94,7 +117,7 @@ pub struct BorderSide {
 impl Default for BorderSide {
     fn default() -> Self {
         BorderSide {
-            color: None,
+            color: SpecifiedColor::CurrentColor,
             width: f32::NAN,
             style: BorderStyle::None,
         }
@@ -204,18 +227,18 @@ mod tests {
 
         let borders = EdgeSizes {
             top: BorderSide {
-                color: None,
+                color: SpecifiedColor::CurrentColor,
                 width: 5.0,
                 style: BorderStyle::Solid,
             },
             right: BorderSide {
-                color: None,
+                color: SpecifiedColor::CurrentColor,
                 width: 8.0,
                 style: BorderStyle::None,
             },
             bottom: BorderSide::default(),
             left: BorderSide {
-                color: None,
+                color: SpecifiedColor::CurrentColor,
                 width: 2.5,
                 style: BorderStyle::Solid,
             },

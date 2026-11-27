@@ -9,22 +9,32 @@ pub struct Declaration {
 #[derive(Debug, Default)]
 pub struct CSSStyleSheet {
     pub rules: Vec<CSSStyleRule>,
-    declarations: Vec<Vec<Declaration>>,
+    properties: Vec<Vec<Declaration>>,
+    custom_properties: Vec<Vec<Declaration>>,
 }
 
 impl CSSStyleSheet {
-    pub fn push_rules(&mut self, selectors: Vec<Vec<Selector>>, declarations: Vec<Declaration>) {
+    pub fn push_rules(
+        &mut self,
+        selectors: Vec<Vec<Selector>>,
+        properties: Vec<Declaration>,
+        custom_properties: Vec<Declaration>,
+    ) {
         if selectors.is_empty() {
             return;
         }
 
-        let properties_id = self.declarations.len();
-        self.declarations.push(declarations);
+        let properties_id = self.properties.len();
+        self.properties.push(properties);
+
+        let custom_properties_id = self.custom_properties.len();
+        self.custom_properties.push(custom_properties);
 
         for selector in selectors {
             self.rules.push(CSSStyleRule {
                 selector,
                 declarations_store_id: properties_id,
+                custom_properties_store_id: custom_properties_id,
             });
         }
     }
@@ -34,11 +44,21 @@ impl CSSStyleSheet {
 pub struct CSSStyleRule {
     pub selector: Vec<Selector>,
     pub declarations_store_id: usize,
+    pub custom_properties_store_id: usize,
 }
 
 impl CSSStyleRule {
     pub fn properties<'a>(&self, stylesheet: &'a CSSStyleSheet) -> Option<&'a Vec<Declaration>> {
-        stylesheet.declarations.get(self.declarations_store_id)
+        stylesheet.properties.get(self.declarations_store_id)
+    }
+
+    pub fn custom_properties<'a>(
+        &self,
+        stylesheet: &'a CSSStyleSheet,
+    ) -> Option<&'a Vec<Declaration>> {
+        stylesheet
+            .custom_properties
+            .get(self.custom_properties_store_id)
     }
 
     pub fn contains_property(&self, stylesheet: &CSSStyleSheet, property_name: &str) -> bool {
@@ -49,12 +69,32 @@ impl CSSStyleRule {
         }
     }
 
+    pub fn contains_custom_property(
+        &self,
+        stylesheet: &CSSStyleSheet,
+        property_name: &str,
+    ) -> bool {
+        if let Some(custom_properties) = self.custom_properties(stylesheet) {
+            custom_properties
+                .iter()
+                .any(|decl| decl.name == property_name)
+        } else {
+            false
+        }
+    }
+
     pub fn get_property_values<'a>(
         &self,
         stylesheet: &'a CSSStyleSheet,
         property_name: &str,
     ) -> Option<Vec<&'a str>> {
-        self.properties(stylesheet).map(|properties| {
+        let property_store = if property_name.starts_with("--") {
+            self.custom_properties(stylesheet)
+        } else {
+            self.properties(stylesheet)
+        };
+
+        property_store.map(|properties| {
             properties
                 .iter()
                 .filter(|decl| decl.name == property_name)
@@ -80,7 +120,8 @@ impl CSSStyleSheet {
     pub fn new() -> Self {
         Self {
             rules: Vec::new(),
-            declarations: Vec::new(),
+            properties: Vec::new(),
+            custom_properties: Vec::new(),
         }
     }
 }
@@ -159,9 +200,10 @@ fn parse_next_rule(
         match token {
             Token::CurlyBracketBlock => {
                 let mut properties = vec![];
+                let mut custom_properties = vec![];
 
                 parser.parse_nested_block(|nested_parser| {
-                    parse_properties(nested_parser, &mut properties)
+                    parse_properties(nested_parser, &mut properties, &mut custom_properties)
                 })?;
 
                 if let Some(Selector::Descendant) = selector.last() {
@@ -172,7 +214,7 @@ fn parse_next_rule(
                     selectors.push(std::mem::take(&mut selector));
                 }
 
-                stylesheet.push_rules(selectors, properties);
+                stylesheet.push_rules(selectors, properties, custom_properties);
 
                 break;
             }
@@ -257,6 +299,7 @@ fn parse_next_rule(
 fn parse_properties(
     parser: &mut Parser,
     properties: &mut Vec<Declaration>,
+    custom_properties: &mut Vec<Declaration>,
 ) -> Result<(), ParseError<CustomCSSParseError>> {
     while !parser.is_exhausted() {
         let name = match parser.next()? {
@@ -275,7 +318,12 @@ fn parse_properties(
             name: name.trim().to_string(),
             value: value.trim().to_string(),
         };
-        properties.push(declaration);
+
+        if declaration.name.starts_with("--") {
+            custom_properties.push(declaration);
+        } else {
+            properties.push(declaration);
+        }
     }
 
     Ok(())

@@ -1,4 +1,6 @@
-use super::types::{BorderSide, BorderStyle, Color, ComputedStyle, Display, EdgeSizes};
+use super::types::{
+    BorderSide, BorderStyle, Color, ComputedStyle, Display, EdgeSizes, SpecifiedColor,
+};
 use blink_css::{CSSStyleRule, CSSStyleSheet};
 
 pub(super) fn cascade_properties(
@@ -8,6 +10,7 @@ pub(super) fn cascade_properties(
     display: Display,
 ) -> ComputedStyle {
     matched_rules.sort_by_key(|a| a.specificity());
+    let matched_rules = &*matched_rules; // Freeze the matched_rules slice to prevent further modifications
 
     let mut style = ComputedStyle::new(display, None, None);
     let default_style = style.clone();
@@ -373,145 +376,127 @@ fn parse_hex_color(hex_str: &str) -> Option<Color> {
     Some(color)
 }
 
-fn parse_border_color(value: &str) -> Option<Option<Color>> {
-    let v = value.trim();
-    if v.eq_ignore_ascii_case("currentcolor") {
-        return Some(None);
-    }
+fn parse_border_color(value: &str) -> Option<SpecifiedColor> {
+    let v = value.trim().to_ascii_lowercase();
 
-    if v.eq_ignore_ascii_case("transparent") {
-        return Some(Some(Color {
-            r: 0,
-            g: 0,
-            b: 0,
-            a: 0,
-        }));
-    }
-
-    if let Some(hex_str) = v.strip_prefix('#') {
-        return parse_hex_color(hex_str).map(Some);
-    }
-
-    let named = match v.to_ascii_lowercase().as_str() {
-        "black" => Color {
-            r: 0,
-            g: 0,
-            b: 0,
-            a: 255,
-        },
-        "silver" => Color {
-            r: 192,
-            g: 192,
-            b: 192,
-            a: 255,
-        },
-        "gray" | "grey" => Color {
-            r: 128,
-            g: 128,
-            b: 128,
-            a: 255,
-        },
-        "white" => Color {
-            r: 255,
-            g: 255,
-            b: 255,
-            a: 255,
-        },
-        "maroon" => Color {
-            r: 128,
-            g: 0,
-            b: 0,
-            a: 255,
-        },
-        "red" => Color {
-            r: 255,
-            g: 0,
-            b: 0,
-            a: 255,
-        },
-        "purple" => Color {
-            r: 128,
-            g: 0,
-            b: 128,
-            a: 255,
-        },
-        "fuchsia" | "magenta" => Color {
-            r: 255,
-            g: 0,
-            b: 255,
-            a: 255,
-        },
-        "green" => Color {
-            r: 0,
-            g: 128,
-            b: 0,
-            a: 255,
-        },
-        "lime" => Color {
-            r: 0,
-            g: 255,
-            b: 0,
-            a: 255,
-        },
-        "olive" => Color {
-            r: 128,
-            g: 128,
-            b: 0,
-            a: 255,
-        },
-        "yellow" => Color {
-            r: 255,
-            g: 255,
-            b: 0,
-            a: 255,
-        },
-        "navy" => Color {
-            r: 0,
-            g: 0,
-            b: 128,
-            a: 255,
-        },
-        "blue" => Color {
-            r: 0,
-            g: 0,
-            b: 255,
-            a: 255,
-        },
-        "teal" => Color {
-            r: 0,
-            g: 128,
-            b: 128,
-            a: 255,
-        },
-        "aqua" | "cyan" => Color {
-            r: 0,
-            g: 255,
-            b: 255,
-            a: 255,
-        },
-        "orange" => Color {
-            r: 255,
-            g: 165,
-            b: 0,
-            a: 255,
-        }, // CSS 2.1 addition
-        "transparent" => Color {
-            r: 0,
-            g: 0,
-            b: 0,
-            a: 0,
-        },
-        _ => return None,
-    };
-
-    Some(Some(named))
+    Some(match v.as_str() {
+        "inherit" | "initial" | "unset" | "revert" => return None, // invalid as the only proper case is caught at the top level
+        "currentcolor" => SpecifiedColor::CurrentColor,
+        "transparent" => SpecifiedColor::Color(Color::TRANSPARENT),
+        v if v.starts_with('#') => parse_hex_color(&v[1..]).map(SpecifiedColor::Color)?,
+        v => SpecifiedColor::Color(match v {
+            "black" => Color {
+                r: 0,
+                g: 0,
+                b: 0,
+                a: 255,
+            },
+            "silver" => Color {
+                r: 192,
+                g: 192,
+                b: 192,
+                a: 255,
+            },
+            "gray" | "grey" => Color {
+                r: 128,
+                g: 128,
+                b: 128,
+                a: 255,
+            },
+            "white" => Color {
+                r: 255,
+                g: 255,
+                b: 255,
+                a: 255,
+            },
+            "maroon" => Color {
+                r: 128,
+                g: 0,
+                b: 0,
+                a: 255,
+            },
+            "red" => Color {
+                r: 255,
+                g: 0,
+                b: 0,
+                a: 255,
+            },
+            "purple" => Color {
+                r: 128,
+                g: 0,
+                b: 128,
+                a: 255,
+            },
+            "fuchsia" | "magenta" => Color {
+                r: 255,
+                g: 0,
+                b: 255,
+                a: 255,
+            },
+            "green" => Color {
+                r: 0,
+                g: 128,
+                b: 0,
+                a: 255,
+            },
+            "lime" => Color {
+                r: 0,
+                g: 255,
+                b: 0,
+                a: 255,
+            },
+            "olive" => Color {
+                r: 128,
+                g: 128,
+                b: 0,
+                a: 255,
+            },
+            "yellow" => Color {
+                r: 255,
+                g: 255,
+                b: 0,
+                a: 255,
+            },
+            "navy" => Color {
+                r: 0,
+                g: 0,
+                b: 128,
+                a: 255,
+            },
+            "blue" => Color {
+                r: 0,
+                g: 0,
+                b: 255,
+                a: 255,
+            },
+            "teal" => Color {
+                r: 0,
+                g: 128,
+                b: 128,
+                a: 255,
+            },
+            "aqua" | "cyan" => Color {
+                r: 0,
+                g: 255,
+                b: 255,
+                a: 255,
+            },
+            "orange" => Color {
+                r: 255,
+                g: 165,
+                b: 0,
+                a: 255,
+            }, // CSS 2.1 addition
+            _ => return None,
+        }),
+    })
 }
 
 fn parse_border_shorthand(value: &str) -> Option<BorderSide> {
     let mut side = BorderSide {
         width: 3.0, // CSS "medium" default when width is omitted
         style: BorderStyle::None,
-        color: None,
+        color: SpecifiedColor::CurrentColor,
     };
     let mut saw_any = false;
     for part in value.split_whitespace() {
@@ -560,7 +545,7 @@ mod tests {
         // Hex Color
         assert_eq!(
             parse_border_color("#ff00ff"),
-            Some(Some(Color {
+            Some(SpecifiedColor::Color(Color {
                 r: 255,
                 g: 0,
                 b: 255,
@@ -571,7 +556,7 @@ mod tests {
         // Named Color
         assert_eq!(
             parse_border_color("white"),
-            Some(Some(Color {
+            Some(SpecifiedColor::Color(Color {
                 r: 255,
                 g: 255,
                 b: 255,
@@ -582,7 +567,7 @@ mod tests {
         // Transparent
         assert_eq!(
             parse_border_color("transparent"),
-            Some(Some(Color {
+            Some(SpecifiedColor::Color(Color {
                 r: 0,
                 g: 0,
                 b: 0,
@@ -591,7 +576,10 @@ mod tests {
         );
 
         // Inherited color
-        assert_eq!(parse_border_color("currentcolor"), Some(None));
+        assert_eq!(
+            parse_border_color("currentcolor"),
+            Some(SpecifiedColor::CurrentColor)
+        );
     }
 
     #[test]
@@ -656,7 +644,7 @@ mod tests {
         // 3-digit and 8-digit hex colors
         assert_eq!(
             parse_border_color("#f0a"),
-            Some(Some(Color {
+            Some(SpecifiedColor::Color(Color {
                 r: 255,
                 g: 0,
                 b: 170,
@@ -665,7 +653,7 @@ mod tests {
         );
         assert_eq!(
             parse_border_color("#11223380"),
-            Some(Some(Color {
+            Some(SpecifiedColor::Color(Color {
                 r: 0x11,
                 g: 0x22,
                 b: 0x33,
@@ -674,10 +662,13 @@ mod tests {
         );
 
         // Case-insensitivity and invalid hex strings
-        assert_eq!(parse_border_color("CURRENTCOLOR"), Some(None));
+        assert_eq!(
+            parse_border_color("CURRENTCOLOR"),
+            Some(SpecifiedColor::CurrentColor)
+        );
         assert_eq!(
             parse_border_color("ReD"),
-            Some(Some(Color {
+            Some(SpecifiedColor::Color(Color {
                 r: 255,
                 g: 0,
                 b: 0,
@@ -693,7 +684,7 @@ mod tests {
             Some(BorderSide {
                 width: 2.0,
                 style: BorderStyle::Solid,
-                color: Some(Color {
+                color: SpecifiedColor::Color(Color {
                     r: 0,
                     g: 255,
                     b: 0,
@@ -706,7 +697,7 @@ mod tests {
             Some(BorderSide {
                 width: 4.0,
                 style: BorderStyle::Solid,
-                color: Some(Color {
+                color: SpecifiedColor::Color(Color {
                     r: 0,
                     g: 0,
                     b: 255,
@@ -719,7 +710,7 @@ mod tests {
             Some(BorderSide {
                 width: 3.0,
                 style: BorderStyle::Solid,
-                color: None,
+                color: SpecifiedColor::CurrentColor,
             })
         );
         assert_eq!(
@@ -727,7 +718,7 @@ mod tests {
             Some(BorderSide {
                 width: 5.0,
                 style: BorderStyle::None,
-                color: None,
+                color: SpecifiedColor::CurrentColor,
             })
         );
         assert_eq!(parse_border_shorthand(""), None);
