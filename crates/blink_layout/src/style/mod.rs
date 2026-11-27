@@ -250,8 +250,7 @@ mod tests {
         div {
             color: var(--b);         /* Should resolve to 'red' */
             background-color: var(--cycle1); /* Should be Invalid/ignored */
-        }
-    ";
+        }";
         parse_css_into_stylesheet(css, &mut stylesheet);
 
         let mut interner = PropInterner::new();
@@ -278,6 +277,48 @@ mod tests {
             table.lookup(child.slot(), cy1_id),
             None,
             "Cyclic var should be Invalid"
+        );
+    }
+
+    #[test]
+    fn resolves_despite_embedded_and_leading_whitespace_vars() {
+        let mut dom = Dom::new();
+        let root = dom.add_element(0, None);
+
+        let child = dom.add_element(get_tag_index("div"), None);
+        dom.set_parent(child, root).unwrap();
+        dom.set_first_child(root, Some(child)).unwrap();
+
+        let mut stylesheet = CSSStyleSheet::new();
+        let css = "
+        :root {
+            --color: red;
+            --shadow: 0 0 10px var(--color);
+            --margin: var(--color) 10px;
+        }";
+        parse_css_into_stylesheet(css, &mut stylesheet);
+
+        let mut interner = PropInterner::new();
+        let table = CustomPropTable::build(root, &dom, &stylesheet, &mut interner);
+
+        let color_id = interner.get("--color").expect("--color should be interned");
+        let shadow_id = interner
+            .get("--shadow")
+            .expect("--shadow should be interned");
+        let margin_id = interner
+            .get("--margin")
+            .expect("--margin should be interned");
+
+        assert_eq!(table.lookup(child.slot(), color_id), Some("red"));
+        assert_eq!(
+            table.lookup(child.slot(), shadow_id),
+            Some("0 0 10px red"),
+            "var() embedded in the middle should resolve"
+        );
+        assert_eq!(
+            table.lookup(child.slot(), margin_id),
+            Some("red 10px"),
+            "var() followed by more content should resolve"
         );
     }
 

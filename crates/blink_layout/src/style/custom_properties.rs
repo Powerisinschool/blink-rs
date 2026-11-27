@@ -167,18 +167,6 @@ impl CustomPropTable {
         table
     }
 
-    // #[allow(unused)]
-    // pub(crate) fn add_stub(&mut self, prop_id: PropId) {
-    //     self.parent.push(0);
-    //     self.props.push(Some(
-    //         vec![CustomProperty {
-    //             id: prop_id,
-    //             value: ComputedCustomPropertyValue::Value("100px".into()),
-    //         }]
-    //         .into_boxed_slice(),
-    //     ));
-    // }
-
     // Returns the first occurrence of the custom property in the current node or its ancestors.
     pub fn lookup(&self, node: usize, id: PropId) -> Option<&str> {
         let mut curr = node;
@@ -215,7 +203,7 @@ fn resolve_custom_property_value(
     interner: &PropInterner,
     visited: &mut Vec<PropId>,
 ) -> Option<String> {
-    if !raw_value.starts_with("var(") {
+    if !raw_value.contains("var(") {
         return Some(raw_value.trim().to_string());
     }
 
