@@ -1,7 +1,8 @@
 use blink_css::{CSSStyleSheet, parse_css_into_stylesheet};
 use blink_html::parse_html;
 use blink_layout::layout::{ConstraintSpace, FontdueMeasurer, LayoutContext};
-use blink_layout::style::compute_styles;
+use blink_layout::style::context::StyleContext;
+use blink_layout::style::custom_properties::{CustomPropTable, PropInterner};
 use blink_render::{RenderOptions, render_to_png_with_options};
 use blink_svg::render_to_svg;
 use std::fs;
@@ -44,12 +45,10 @@ fn main() {
         panic!("Document should have a root node");
     };
 
-    let style_cache = compute_styles(
-        virtual_root_id,
-        &output_dom,
-        &stylesheet,
-        Some(output_dom.nodes_len()),
-    );
+    let custom_prop_table = CustomPropTable::new();
+    let prop_interner = PropInterner::new();
+    let ctx = StyleContext::new(&output_dom, &stylesheet, &custom_prop_table, &prop_interner);
+    let style_cache = ctx.compute_styles(virtual_root_id, Some(output_dom.nodes_len()));
 
     let mut ctx = LayoutContext {
         dom: &output_dom,

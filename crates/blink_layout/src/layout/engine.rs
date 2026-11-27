@@ -235,13 +235,23 @@ impl<'a, M: TextMeasurer + ?Sized> LayoutContext<'a, M> {
 mod tests {
     use super::super::text::FixedWidth;
     use super::*;
-    use crate::style::compute_styles;
+    use crate::style::custom_properties::{CustomPropTable, PropInterner};
     use blink_css::CSSStyleSheet;
     use blink_css::parse_css_into_stylesheet;
     use blink_dom::get_tag_index;
 
     fn test_canvas_space() -> ConstraintSpace {
         ConstraintSpace::new(800.0, 600.0)
+    }
+
+    fn make_test_ctx<'a>(
+        dom: &'a Dom,
+        stylesheet: &'a CSSStyleSheet,
+    ) -> crate::style::context::StyleContext<'a> {
+        // Lazy helper to leak the table and interner so we don't have to manage lifetimes in the test
+        let table = Box::leak(Box::new(CustomPropTable::new()));
+        let interner = Box::leak(Box::new(PropInterner::new()));
+        crate::style::context::StyleContext::new(dom, stylesheet, table, interner)
     }
 
     #[test]
@@ -275,7 +285,8 @@ mod tests {
 
         let space = test_canvas_space();
 
-        let style_cache = compute_styles(root, &dom, &stylesheet, None);
+        let ctx = make_test_ctx(&dom, &stylesheet);
+        let style_cache = ctx.compute_styles(root, None);
 
         let mut ctx = LayoutContext {
             dom: &dom,
@@ -338,7 +349,8 @@ mod tests {
 
         let space = test_canvas_space();
 
-        let style_cache = compute_styles(root, &dom, &stylesheet, None);
+        let ctx = make_test_ctx(&dom, &stylesheet);
+        let style_cache = ctx.compute_styles(root, None);
 
         let mut ctx = LayoutContext {
             dom: &dom,

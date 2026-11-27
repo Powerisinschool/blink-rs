@@ -14,7 +14,7 @@ use blink_html::parse_html;
 use blink_layout::layout::ConstraintSpace;
 use blink_layout::layout::LayoutContext;
 use blink_layout::layout::{FragmentArena, LayoutFragmentId};
-use blink_layout::style::compute_styles;
+use blink_layout::style::context::StyleContext;
 use std::env;
 use std::fmt::Write;
 use std::fs;
@@ -33,7 +33,11 @@ fn layout_fixture(html: &str, css: &str) -> (Dom, FragmentArena) {
     parse_css_into_stylesheet(css, &mut stylesheet);
 
     let space = ConstraintSpace::from(VIEWPORT);
-    let style_cache = compute_styles(virtual_root_id, &dom, &stylesheet, Some(dom.nodes_len()));
+
+    let custom_prop_table = blink_layout::style::custom_properties::CustomPropTable::new();
+    let prop_interner = blink_layout::style::custom_properties::PropInterner::new();
+    let ctx = StyleContext::new(&dom, &stylesheet, &custom_prop_table, &prop_interner);
+    let style_cache = ctx.compute_styles(virtual_root_id, Some(dom.nodes_len()));
     let mut ctx = LayoutContext {
         dom: &dom,
         style_cache: &style_cache, // Initialize StyleCache with the number of nodes in the DOM

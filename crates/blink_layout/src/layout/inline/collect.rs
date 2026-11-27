@@ -207,7 +207,7 @@ pub fn strip_trailing_space(items: &mut Vec<InlineItem>) -> bool {
 mod tests {
     use super::super::super::text::FixedWidth;
     use super::*;
-    use crate::style::compute_styles;
+    use crate::style::custom_properties::{CustomPropTable, PropInterner};
     use blink_css::CSSStyleSheet;
     use blink_dom::{Dom, get_tag_index};
 
@@ -224,13 +224,24 @@ mod tests {
         result
     }
 
+    fn make_test_ctx<'a>(
+        dom: &'a Dom,
+        stylesheet: &'a CSSStyleSheet,
+    ) -> crate::style::context::StyleContext<'a> {
+        // Lazy helper to leak the table and interner so we don't have to manage lifetimes in the test
+        let table = Box::leak(Box::new(CustomPropTable::new()));
+        let interner = Box::leak(Box::new(PropInterner::new()));
+        crate::style::context::StyleContext::new(dom, stylesheet, table, interner)
+    }
+
     #[test]
     fn test_collapse_basic_whitespace() {
         let mut dom = Dom::new();
         let text_id = dom.add_text("  Hello \n   world  ");
 
         let stylesheet = CSSStyleSheet::new();
-        let style_cache = compute_styles(text_id, &dom, &stylesheet, None);
+        let ctx = make_test_ctx(&dom, &stylesheet);
+        let style_cache = ctx.compute_styles(text_id, None);
 
         let mut ctx = LayoutContext {
             dom: &dom,
@@ -251,7 +262,8 @@ mod tests {
         let t2 = dom.add_text(" world"); // Leading space here should collapse
 
         let stylesheet = CSSStyleSheet::new();
-        let style_cache = compute_styles(t1, &dom, &stylesheet, None);
+        let ctx = make_test_ctx(&dom, &stylesheet);
+        let style_cache = ctx.compute_styles(t1, None);
 
         let mut ctx = LayoutContext {
             dom: &dom,
@@ -286,7 +298,8 @@ mod tests {
         dom.set_first_child(span, Some(t2)).unwrap();
 
         let stylesheet = CSSStyleSheet::new();
-        let style_cache = compute_styles(parent, &dom, &stylesheet, None);
+        let ctx = make_test_ctx(&dom, &stylesheet);
+        let style_cache = ctx.compute_styles(parent, None);
 
         let mut ctx = LayoutContext {
             dom: &dom,
@@ -333,7 +346,8 @@ mod tests {
             .expect("Failed to set next sibling");
 
         let stylesheet = CSSStyleSheet::new();
-        let style_cache = compute_styles(root, &dom, &stylesheet, None);
+        let ctx = make_test_ctx(&dom, &stylesheet);
+        let style_cache = ctx.compute_styles(root, None);
 
         let mut ctx = LayoutContext {
             dom: &dom,
@@ -353,7 +367,8 @@ mod tests {
         let t1 = dom.add_text("   \n   \t  ");
 
         let stylesheet = CSSStyleSheet::new();
-        let style_cache = compute_styles(t1, &dom, &stylesheet, None);
+        let ctx = make_test_ctx(&dom, &stylesheet);
+        let style_cache = ctx.compute_styles(t1, None);
 
         let mut ctx = LayoutContext {
             dom: &dom,

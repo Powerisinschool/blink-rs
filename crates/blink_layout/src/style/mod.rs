@@ -1,4 +1,6 @@
 mod cascade;
+pub mod context;
+pub mod custom_properties;
 mod matching;
 pub mod types;
 
@@ -8,8 +10,7 @@ pub use types::{
     EdgeSizes,
 };
 
-use blink_css::CSSStyleSheet;
-use blink_dom::{Dom, DomNodeId, get_tag_name};
+use blink_dom::DomNodeId;
 
 pub struct ComputedStyleTag;
 pub type ComputedStyleId = blink_core::base::Id<ComputedStyleTag>;
@@ -17,8 +18,6 @@ pub type ComputedStyleId = blink_core::base::Id<ComputedStyleTag>;
 #[derive(Debug)]
 pub struct StyleCache {
     styles: Vec<ComputedStyle>,
-    #[allow(unused)]
-    bloom_filter: u64, // A filter to quickly check if a custom property exists across all nodes.
     node_cache: Vec<Option<(Generation, ComputedStyleId)>>,
 }
 
@@ -32,7 +31,6 @@ impl StyleCache {
     pub fn new(size: usize) -> Self {
         Self {
             styles: Vec::with_capacity(size),
-            bloom_filter: 0,
             node_cache: vec![None; size],
         }
     }
@@ -99,93 +97,22 @@ impl StyleCache {
     }
 }
 
-fn is_stylable_element(node_id: DomNodeId, dom: &Dom) -> bool {
-    !dom.is_document_node(node_id) && dom.get_node(node_id).is_some_and(|node| node.is_element())
-}
-
-pub fn compute_styles(
-    root: DomNodeId,
-    dom: &Dom,
-    stylesheet: &CSSStyleSheet,
-    initial_size: Option<usize>,
-) -> StyleCache {
-    let mut style_cache = StyleCache::new(initial_size.unwrap_or_default());
-
-    let mut stack = vec![(root, None)];
-
-    while let Some((node_id, parent_id)) = stack.pop() {
-        let Some(node) = dom.get_node(node_id) else {
-            continue;
-        };
-
-        if node.is_text() {
-            continue;
-        }
-
-        if is_stylable_element(node_id, dom) {
-            let parent_style = parent_id.and_then(|pid| style_cache.get_for_node(pid));
-            let computed_style = compute_element_style(node_id, parent_style, dom, stylesheet);
-            style_cache.insert(node_id, computed_style);
-        }
-
-        let mut current_child = dom.get_first_child(node_id);
-        while let Some(child) = current_child {
-            stack.push((child, Some(node_id)));
-            current_child = dom.get_next_sibling(child);
-        }
-    }
-
-    style_cache
-}
-
-fn compute_element_style(
-    node_id: DomNodeId,
-    parent_style: Option<&ComputedStyle>,
-    dom: &Dom,
-    stylesheet: &CSSStyleSheet,
-) -> ComputedStyle {
-    let mut rules = matching::get_matching_rules(node_id, dom, stylesheet);
-
-    let computed_style = cascade::cascade_properties(
-        &mut rules,
-        parent_style,
-        stylesheet,
-        default_display(node_id, dom),
-    );
-
-    // Compute custom properties (CSS variables) based on parent style if available
-    // Resolve var() in declarations using parent_style if necessary
-
-    computed_style
-}
-
-// fn compute_style(node_id: DomNodeId, dom: &Dom, stylesheet: &CSSStyleSheet) -> ComputedStyle {
-//     let mut rules = matching::get_matching_rules(node_id, dom, stylesheet);
-//
-//     cascade::cascade_properties(&mut rules, stylesheet, default_display(node_id, dom))
-// }
-
-fn default_display(node_id: DomNodeId, dom: &Dom) -> Display {
-    if let Some(node) = dom.get_node(node_id)
-        && let Some(tag) = node.get_tag()
-    {
-        match get_tag_name(tag) {
-            "head" | "script" | "style" | "title" | "meta" | "link" => Display::None,
-            "document" | "html" | "body" | "div" | "p" | "section" | "ul" | "li" => Display::BLOCK,
-            _ => Display::INLINE,
-        }
-    } else {
-        Display::INLINE
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::style::context::StyleContext;
+    use crate::style::custom_properties::{CustomPropTable, PropInterner};
     use crate::style::matching::tests::{DIV_TAG_INDEX, make_attr};
     use crate::style::types::SpecifiedColor;
-    use blink_css::parse_css_into_stylesheet;
-    use blink_dom::get_tag_index;
+    use blink_css::{CSSStyleSheet, parse_css_into_stylesheet};
+    use blink_dom::{Dom, get_tag_index};
+
+    fn make_test_ctx<'a>(dom: &'a Dom, stylesheet: &'a CSSStyleSheet) -> StyleContext<'a> {
+        // Lazy helper to leak the table and interner so we don't have to manage lifetimes in the test
+        let table = Box::leak(Box::new(CustomPropTable::new()));
+        let interner = Box::leak(Box::new(PropInterner::new()));
+        StyleContext::new(dom, stylesheet, table, interner)
+    }
 
     #[test]
     fn compute_style_for_element() {
@@ -199,7 +126,8 @@ mod tests {
         let mut stylesheet = CSSStyleSheet::new();
         parse_css_into_stylesheet("div { width: 100px; height: 100px; }", &mut stylesheet);
 
-        let style_cache = compute_styles(div_node, &dom, &stylesheet, None);
+        let ctx = make_test_ctx(&dom, &stylesheet);
+        let style_cache = ctx.compute_styles(div_node, None);
 
         let computed_style = style_cache.get_for_node(div_node).unwrap();
         assert_eq!(computed_style.width, Some(100.0));
@@ -222,10 +150,11 @@ mod tests {
             &mut stylesheet,
         );
 
-        let styles = compute_styles(parent, &dom, &stylesheet, None);
+        let ctx = make_test_ctx(&dom, &stylesheet);
+        let style_cache = ctx.compute_styles(parent, None);
 
-        assert_eq!(styles.get_for_node(parent).unwrap().width, Some(200.0));
-        assert_eq!(styles.get_for_node(child).unwrap().width, Some(100.0));
+        assert_eq!(style_cache.get_for_node(parent).unwrap().width, Some(200.0));
+        assert_eq!(style_cache.get_for_node(child).unwrap().width, Some(100.0));
     }
 
     #[test]
@@ -253,39 +182,46 @@ mod tests {
             &mut stylesheet,
         );
 
-        let styles = compute_styles(root, &dom, &stylesheet, None);
+        let ctx = make_test_ctx(&dom, &stylesheet);
+        let style_cache = ctx.compute_styles(root, None);
 
-        assert_eq!(styles.get_for_node(parent).unwrap().width, Some(300.0));
-        assert_eq!(styles.get_for_node(parent).unwrap().height, Some(50.0));
-        assert_eq!(styles.get_for_node(child).unwrap().width, Some(300.0));
-        assert_eq!(styles.get_for_node(child).unwrap().height, Some(150.0));
+        assert_eq!(style_cache.get_for_node(parent).unwrap().width, Some(300.0));
+        assert_eq!(style_cache.get_for_node(parent).unwrap().height, Some(50.0));
+        assert_eq!(style_cache.get_for_node(child).unwrap().width, Some(300.0));
+        assert_eq!(style_cache.get_for_node(child).unwrap().height, Some(150.0));
     }
 
-    // #[test]
-    // fn inherits_custom_properties() {
-    //     let mut dom = Dom::new();
-    //
-    //     let root = dom.add_element(0, None);
-    //     let parent = dom.add_element(get_tag_index("div"), None);
-    //     let child = dom.add_element(get_tag_index("div"), None);
-    //
-    //     dom.set_parent(child, parent).expect("Failed to set parent");
-    //     dom.set_first_child(parent, Some(child))
-    //         .expect("Failed to set first child");
-    //     dom.set_parent(parent, root).expect("Failed to set parent");
-    //     dom.set_first_child(root, Some(parent))
-    //         .expect("Failed to set first child");
-    //
-    //     let mut stylesheet = CSSStyleSheet::new();
-    //     parse_css_into_stylesheet(
-    //         ":root { --w: 100px } div { width: var(--w) }",
-    //         &mut stylesheet,
-    //     );
-    //
-    //     let styles = compute_styles(root, &dom, &stylesheet, None);
-    //
-    //     assert_eq!(styles.get_for_node(child).unwrap().width, Some(100.0));
-    // }
+    #[test]
+    fn inherits_custom_properties() {
+        let mut dom = Dom::new();
+
+        let root = dom.add_element(0, None);
+        let parent = dom.add_element(get_tag_index("div"), None);
+        let child = dom.add_element(get_tag_index("div"), None);
+
+        dom.set_parent(child, parent).expect("Failed to set parent");
+        dom.set_first_child(parent, Some(child))
+            .expect("Failed to set first child");
+        dom.set_parent(parent, root).expect("Failed to set parent");
+        dom.set_first_child(root, Some(parent))
+            .expect("Failed to set first child");
+
+        let mut stylesheet = CSSStyleSheet::new();
+        parse_css_into_stylesheet(
+            ":root { --w: 100px } div { width: var(--w) }",
+            &mut stylesheet,
+        );
+
+        let mut custom_prop_table = CustomPropTable::new();
+        let mut prop_interner = PropInterner::new();
+        let prop_id = prop_interner.intern("--w");
+        custom_prop_table.add_stub(prop_id); // Add a stub for the parent node
+
+        let ctx = StyleContext::new(&dom, &stylesheet, &custom_prop_table, &prop_interner);
+        let style_cache = ctx.compute_styles(root, None);
+
+        assert_eq!(style_cache.get_for_node(child).unwrap().width, Some(100.0));
+    }
 
     #[test]
     fn computes_styles_for_descendants_of_display_none() {
@@ -303,10 +239,14 @@ mod tests {
             &mut stylesheet,
         );
 
-        let styles = compute_styles(parent, &dom, &stylesheet, None);
+        let ctx = make_test_ctx(&dom, &stylesheet);
+        let style_cache = ctx.compute_styles(parent, None);
 
-        assert_eq!(styles.get_for_node(parent).unwrap().display, Display::None);
-        assert_eq!(styles.get_for_node(child).unwrap().width, Some(100.0));
+        assert_eq!(
+            style_cache.get_for_node(parent).unwrap().display,
+            Display::None
+        );
+        assert_eq!(style_cache.get_for_node(child).unwrap().width, Some(100.0));
     }
 
     #[test]
@@ -328,7 +268,8 @@ mod tests {
         ";
         parse_css_into_stylesheet(css, &mut stylesheet);
 
-        let style_cache = compute_styles(div_node, &dom, &stylesheet, None);
+        let ctx = make_test_ctx(&dom, &stylesheet);
+        let style_cache = ctx.compute_styles(div_node, None);
 
         let computed = style_cache
             .get_for_node(div_node)
@@ -373,7 +314,8 @@ mod tests {
         ";
         parse_css_into_stylesheet(css, &mut stylesheet);
 
-        let style_cache = compute_styles(vroot_node, &dom, &stylesheet, None);
+        let ctx = make_test_ctx(&dom, &stylesheet);
+        let style_cache = ctx.compute_styles(vroot_node, None);
 
         let computed = style_cache
             .get_for_node(div_node)
@@ -423,7 +365,8 @@ mod tests {
         ";
         parse_css_into_stylesheet(css, &mut stylesheet);
 
-        let style_cache = compute_styles(root, &dom, &stylesheet, None);
+        let ctx = make_test_ctx(&dom, &stylesheet);
+        let style_cache = ctx.compute_styles(root, None);
 
         let computed = style_cache
             .get_for_node(div_node)
@@ -475,7 +418,8 @@ mod tests {
         ";
         parse_css_into_stylesheet(css, &mut stylesheet);
 
-        let style_cache = compute_styles(div_node, &dom, &stylesheet, None);
+        let ctx = make_test_ctx(&dom, &stylesheet);
+        let style_cache = ctx.compute_styles(div_node, None);
 
         let computed = style_cache
             .get_for_node(div_node)
