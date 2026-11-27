@@ -107,8 +107,8 @@ fn match_compound(node_id: DomNodeId, dom: &Dom, parts: &[Selector]) -> bool {
                 }
             }
             Selector::PseudoElement(_name) => {
-                // Pseudo-elements are not supported in this matching logic
-                todo!();
+                // TODO: Pseudo-elements are not supported in this matching logic
+                return false;
             }
             Selector::Function(name, args) => {
                 match name.as_str() {
