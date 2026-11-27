@@ -228,58 +228,58 @@ mod tests {
         assert_eq!(style_cache.get_for_node(child).unwrap().width, Some(100.0));
     }
 
-    // #[test]
-    // fn resolves_chained_and_cyclic_custom_properties() {
-    //     let mut dom = Dom::new();
-    //     let root = dom.add_element(0, None);
-    //
-    //     // Add a child so we test inheritance + chaining together
-    //     let child = dom.add_element(get_tag_index("div"), None);
-    //     dom.set_parent(child, root).unwrap();
-    //     dom.set_first_child(root, Some(child)).unwrap();
-    //
-    //     let mut stylesheet = CSSStyleSheet::new();
-    //     let css = "
-    //     :root {
-    //         --a: red;
-    //         --b: var(--a);       /* Chained: should resolve to 'red' */
-    //         --c: var(--b);       /* Chained: should resolve to 'red' */
-    //         --cycle1: var(--cycle2);
-    //         --cycle2: var(--cycle1); /* Cycle: should be Invalid */
-    //     }
-    //     div {
-    //         color: var(--b);         /* Should resolve to 'red' */
-    //         background-color: var(--cycle1); /* Should be Invalid/ignored */
-    //     }
-    // ";
-    //     parse_css_into_stylesheet(css, &mut stylesheet);
-    //
-    //     let mut interner = PropInterner::new();
-    //     let table = CustomPropTable::build(root, &dom, &stylesheet, &mut interner);
-    //
-    //     // Check the table directly first
-    //     let a_id = interner.get("--a").unwrap();
-    //     let b_id = interner.get("--b").unwrap();
-    //     let c_id = interner.get("--c").unwrap();
-    //     let cy1_id = interner.get("--cycle1").unwrap();
-    //
-    //     assert_eq!(table.lookup(child.slot(), a_id), Some("red"));
-    //     assert_eq!(
-    //         table.lookup(child.slot(), b_id),
-    //         Some("red"),
-    //         "Chained var should resolve"
-    //     );
-    //     assert_eq!(
-    //         table.lookup(child.slot(), c_id),
-    //         Some("red"),
-    //         "Chained var should resolve"
-    //     );
-    //     assert_eq!(
-    //         table.lookup(child.slot(), cy1_id),
-    //         None,
-    //         "Cyclic var should be Invalid"
-    //     );
-    // }
+    #[test]
+    fn resolves_chained_and_cyclic_custom_properties() {
+        let mut dom = Dom::new();
+        let root = dom.add_element(0, None);
+
+        // Add a child so we test inheritance + chaining together
+        let child = dom.add_element(get_tag_index("div"), None);
+        dom.set_parent(child, root).unwrap();
+        dom.set_first_child(root, Some(child)).unwrap();
+
+        let mut stylesheet = CSSStyleSheet::new();
+        let css = "
+        :root {
+            --a: red;
+            --b: var(--a);       /* Chained: should resolve to 'red' */
+            --c: var(--b);       /* Chained: should resolve to 'red' */
+            --cycle1: var(--cycle2);
+            --cycle2: var(--cycle1); /* Cycle: should be Invalid */
+        }
+        div {
+            color: var(--b);         /* Should resolve to 'red' */
+            background-color: var(--cycle1); /* Should be Invalid/ignored */
+        }
+    ";
+        parse_css_into_stylesheet(css, &mut stylesheet);
+
+        let mut interner = PropInterner::new();
+        let table = CustomPropTable::build(root, &dom, &stylesheet, &mut interner);
+
+        // Check the table directly first
+        let a_id = interner.get("--a").unwrap();
+        let b_id = interner.get("--b").unwrap();
+        let c_id = interner.get("--c").unwrap();
+        let cy1_id = interner.get("--cycle1").unwrap();
+
+        assert_eq!(table.lookup(child.slot(), a_id), Some("red"));
+        assert_eq!(
+            table.lookup(child.slot(), b_id),
+            Some("red"),
+            "Chained var should resolve"
+        );
+        assert_eq!(
+            table.lookup(child.slot(), c_id),
+            Some("red"),
+            "Chained var should resolve"
+        );
+        assert_eq!(
+            table.lookup(child.slot(), cy1_id),
+            None,
+            "Cyclic var should be Invalid"
+        );
+    }
 
     #[test]
     fn computes_styles_for_descendants_of_display_none() {
