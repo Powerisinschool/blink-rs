@@ -126,15 +126,21 @@ impl CustomPropTable {
 
             if !local_props.is_empty() {
                 let mut resolved_props = Vec::with_capacity(local_props.len());
+                // outside loop to retain capacity across iterations
+                // also, it's given 4 because recursion depth shouldn't exceed that 🙄
+                let mut visited: Vec<PropId> = Vec::with_capacity(4);
 
                 for (id, raw_value) in &local_props {
+                    visited.push(*id);
                     let resolved = resolve_custom_property_value(
                         raw_value,
                         &local_props,
                         &table,
                         slot,
                         interner,
+                        &mut visited,
                     );
+                    visited.clear(); // clear `visited`, keeping capacity
 
                     let final_value = match resolved {
                         Some(value) => ComputedCustomPropertyValue::Value(value.into()),
@@ -199,13 +205,15 @@ impl CustomPropTable {
     }
 }
 
-/// TODO: Implement `var(--a, fallback)` and recursive cycle detection.
+/// TODO: Implement `var(--a, fallback)`
+/// This will mean refactoring from the current naive approach 😭
 fn resolve_custom_property_value(
     raw_value: &str,
     local_props: &HashMap<PropId, &str>,
     table: &CustomPropTable,
     current_slot: usize,
     interner: &PropInterner,
+    visited: &mut Vec<PropId>,
 ) -> Option<String> {
     if !raw_value.starts_with("var(") {
         return Some(raw_value.trim().to_string());
@@ -224,11 +232,23 @@ fn resolve_custom_property_value(
         };
 
         let var_name = after_start[..end].trim();
-
         let id = interner.get(var_name)?;
 
         let value = if let Some(local_val) = local_props.get(&id) {
-            Some(local_val.to_string())
+            if visited.contains(&id) {
+                return None; // cycle
+            }
+            visited.push(id);
+            let resolved = resolve_custom_property_value(
+                local_val,
+                local_props,
+                table,
+                current_slot,
+                interner,
+                visited,
+            );
+            visited.pop();
+            resolved
         } else {
             table.lookup(current_slot, id).map(|s| s.to_string())
         };
