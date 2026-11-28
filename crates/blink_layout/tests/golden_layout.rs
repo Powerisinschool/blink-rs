@@ -9,7 +9,7 @@
 //!     BLESS=1 cargo test -p blink_layout --test golden_layout
 
 use blink_css::{CSSStyleSheet, parse_css_into_stylesheet};
-use blink_dom::{Dom, get_tag_name};
+use blink_dom::Dom;
 use blink_html::parse_html;
 use blink_layout::layout::ConstraintSpace;
 use blink_layout::layout::LayoutContext;
@@ -51,11 +51,7 @@ fn layout_fixture(html: &str, css: &str) -> (Dom, FragmentArena) {
 
 /// `div#app-root`, `span.nav-item`, `div.menu-link.active`, `p`, ...
 fn label(dom: &Dom, id: blink_dom::DomNodeId) -> String {
-    let mut s = dom
-        .get_tag(id)
-        .map(get_tag_name)
-        .unwrap_or("#text")
-        .to_string();
+    let mut s = dom.node_tag_name(id).unwrap_or("#text").to_string();
 
     if let Some(attrs) = dom.get_attributes(id) {
         for attr in attrs {

@@ -60,11 +60,12 @@ fn match_compound(node_id: DomNodeId, dom: &Dom, parts: &[Selector]) -> bool {
     for part in parts {
         match part {
             Selector::Tag(target_tag) => {
-                let node = match dom.get_node(node_id) {
-                    Some(n) => n,
-                    None => return false,
-                };
-                if node.get_tag_name().is_none_or(|tag| tag != *target_tag) {
+                // Resolve through the `Dom` so custom elements match their own
+                // name (a bare `DomNode` reports them all as `div`).
+                if dom
+                    .node_tag_name(node_id)
+                    .is_none_or(|tag| tag != *target_tag)
+                {
                     return false;
                 }
             }
@@ -344,6 +345,25 @@ pub(super) mod tests {
             !matches_selector(p_node, &dom, &rule_fail),
             "Should fail if the ancestor tree exhausts without finding a 'nav'"
         );
+    }
+
+    #[test]
+    fn custom_elements_match_their_own_name_and_not_div() {
+        let mut dom = Dom::new();
+        let name = QualName::new(None, ns!(html), LocalName::from("my-card"));
+        let tag = dom.intern_custom_tag(name);
+        let node = dom.add_element(tag, None);
+
+        assert!(matches_selector(
+            node,
+            &dom,
+            &get_first_rule("my-card { margin: 0; }")
+        ));
+        assert!(!matches_selector(
+            node,
+            &dom,
+            &get_first_rule("div { margin: 0; }")
+        ));
     }
 
     #[test]

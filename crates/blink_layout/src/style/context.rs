@@ -1,7 +1,7 @@
 use crate::style::custom_properties::{CustomPropTable, PropInterner};
 use crate::style::{ComputedStyle, Display, StyleCache, cascade, matching};
 use blink_css::CSSStyleSheet;
-use blink_dom::{Dom, DomNodeId, get_tag_name};
+use blink_dom::{Dom, DomNodeId};
 
 pub struct StyleContext<'a> {
     pub dom: &'a Dom,
@@ -29,7 +29,7 @@ impl<'a> StyleContext<'a> {
         if let Some(node) = self.dom.get_node(node_id)
             && let Some(tag) = node.get_tag()
         {
-            match get_tag_name(tag) {
+            match self.dom.tag_name(tag) {
                 "head" | "script" | "style" | "title" | "meta" | "link" => Display::None,
                 "document" | "html" | "body" | "div" | "p" | "section" | "ul" | "li" => {
                     Display::BLOCK
