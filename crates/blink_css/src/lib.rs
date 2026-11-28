@@ -3,62 +3,75 @@ use cssparser::{ParseError, Parser, Token};
 #[derive(Debug, Clone)]
 pub struct Declaration {
     pub name: String,
-    pub value: String,
+    pub value: Box<[ValuePart]>,
+}
+
+#[derive(Debug)]
+pub struct DeclarationSpan {
+    pub start: usize,
+    pub end: usize,
+}
+
+#[derive(Debug)]
+pub struct CSSStyleRule {
+    pub selector: Box<[Selector]>,
+    pub properties_span: DeclarationSpan,
+    pub custom_properties_span: DeclarationSpan,
 }
 
 #[derive(Debug, Default)]
 pub struct CSSStyleSheet {
     pub rules: Vec<CSSStyleRule>,
-    properties: Vec<Vec<Declaration>>,
-    custom_properties: Vec<Vec<Declaration>>,
+    declarations: Vec<Declaration>,
 }
 
 impl CSSStyleSheet {
-    pub fn push_rules(
+    pub fn push_rule(
         &mut self,
-        selectors: Vec<Vec<Selector>>,
-        properties: Vec<Declaration>,
-        custom_properties: Vec<Declaration>,
+        selectors: Vec<Box<[Selector]>>,
+        properties: impl IntoIterator<Item = Declaration>,
+        custom_properties: impl IntoIterator<Item = Declaration>,
     ) {
         if selectors.is_empty() {
             return;
         }
 
-        let properties_id = self.properties.len();
-        self.properties.push(properties);
+        let properties_start = self.declarations.len();
+        self.declarations.extend(properties);
+        let properties_end = self.declarations.len();
 
-        let custom_properties_id = self.custom_properties.len();
-        self.custom_properties.push(custom_properties);
+        let custom_properties_start = self.declarations.len();
+        self.declarations.extend(custom_properties);
+        let custom_properties_end = self.declarations.len();
 
         for selector in selectors {
             self.rules.push(CSSStyleRule {
                 selector,
-                declarations_store_id: properties_id,
-                custom_properties_store_id: custom_properties_id,
+                properties_span: DeclarationSpan {
+                    start: properties_start,
+                    end: properties_end,
+                },
+                custom_properties_span: DeclarationSpan {
+                    start: custom_properties_start,
+                    end: custom_properties_end,
+                },
             });
         }
     }
 }
 
-#[derive(Debug)]
-pub struct CSSStyleRule {
-    pub selector: Vec<Selector>,
-    pub declarations_store_id: usize,
-    pub custom_properties_store_id: usize,
-}
-
 impl CSSStyleRule {
-    pub fn properties<'a>(&self, stylesheet: &'a CSSStyleSheet) -> Option<&'a Vec<Declaration>> {
-        stylesheet.properties.get(self.declarations_store_id)
+    pub fn properties<'a>(&self, stylesheet: &'a CSSStyleSheet) -> Option<&'a [Declaration]> {
+        let DeclarationSpan { start, end } = self.properties_span;
+        stylesheet.declarations.get(start..end)
     }
 
     pub fn custom_properties<'a>(
         &self,
         stylesheet: &'a CSSStyleSheet,
-    ) -> Option<&'a Vec<Declaration>> {
-        stylesheet
-            .custom_properties
-            .get(self.custom_properties_store_id)
+    ) -> Option<&'a [Declaration]> {
+        let DeclarationSpan { start, end } = self.custom_properties_span;
+        stylesheet.declarations.get(start..end)
     }
 
     pub fn contains_property(&self, stylesheet: &CSSStyleSheet, property_name: &str) -> bool {
@@ -87,7 +100,7 @@ impl CSSStyleRule {
         &self,
         stylesheet: &'a CSSStyleSheet,
         property_name: &str,
-    ) -> Option<Vec<&'a str>> {
+    ) -> Option<Vec<&'a [ValuePart]>> {
         let property_store = if property_name.starts_with("--") {
             self.custom_properties(stylesheet)
         } else {
@@ -98,7 +111,7 @@ impl CSSStyleRule {
             properties
                 .iter()
                 .filter(|decl| decl.name == property_name)
-                .map(|decl| decl.value.as_str())
+                .map(|decl| decl.value.as_ref())
                 .collect()
         })
     }
@@ -120,8 +133,7 @@ impl CSSStyleSheet {
     pub fn new() -> Self {
         Self {
             rules: Vec::new(),
-            properties: Vec::new(),
-            custom_properties: Vec::new(),
+            declarations: Vec::new(),
         }
     }
 }
@@ -180,7 +192,7 @@ fn parse_next_rule(
     parser: &mut Parser,
     stylesheet: &mut CSSStyleSheet,
 ) -> Result<(), ParseError<CustomCSSParseError>> {
-    let mut selectors: Vec<Vec<Selector>> = Vec::new();
+    let mut selectors: Vec<Box<[Selector]>> = Vec::new();
     let mut selector: Vec<Selector> = Vec::new();
 
     let mut seen_pseudo_element = false;
@@ -211,10 +223,10 @@ fn parse_next_rule(
                 }
 
                 if !selector.is_empty() {
-                    selectors.push(std::mem::take(&mut selector));
+                    selectors.push(std::mem::take(&mut selector).into_boxed_slice());
                 }
 
-                stylesheet.push_rules(selectors, properties, custom_properties);
+                stylesheet.push_rule(selectors, properties, custom_properties);
 
                 break;
             }
@@ -225,7 +237,7 @@ fn parse_next_rule(
                 if selector.is_empty() {
                     return skip_invalid_rule(parser);
                 }
-                selectors.push(std::mem::take(&mut selector));
+                selectors.push(std::mem::take(&mut selector).into_boxed_slice());
                 seen_pseudo_element = false;
             }
             Token::WhiteSpace(_) => {
@@ -311,12 +323,12 @@ fn parse_properties(
             continue;
         }
 
-        let mut value = String::new();
-        serialize_value_tokens(parser, &mut value)?;
+        let mut value = vec![];
+        parse_property_value(parser, &mut value)?;
 
         let declaration = Declaration {
             name: name.trim().to_string(),
-            value: value.trim().to_string(),
+            value: value.into_boxed_slice(),
         };
 
         if declaration.name.starts_with("--") {
@@ -329,45 +341,85 @@ fn parse_properties(
     Ok(())
 }
 
-fn serialize_value_tokens(
+#[derive(Debug, Clone)]
+pub enum ValuePart {
+    Literal(String),
+    Var {
+        name: String,
+        fallback: Option<Vec<ValuePart>>,
+    },
+    Function {
+        name: String,
+        args: Option<Vec<ValuePart>>,
+    },
+}
+
+impl ValuePart {
+    /// Returns the raw string for a single-literal value, or None if the value
+    /// contains any `var()` references.
+    pub fn as_pure_literal(value: &[ValuePart]) -> Option<&str> {
+        match value {
+            [ValuePart::Literal(s)] => Some(s),
+            [] => Some(""),
+            _ => None,
+        }
+    }
+}
+
+fn parse_property_value(
     parser: &mut Parser,
-    out: &mut String,
+    parts: &mut Vec<ValuePart>,
 ) -> Result<(), ParseError<CustomCSSParseError>> {
     while !parser.is_exhausted() {
-        let token = parser.next_including_whitespace()?;
+        let start = parser.position();
+        let token = parser.next_including_whitespace()?.clone();
 
         match token {
+            Token::Function(ref name) if name.eq_ignore_ascii_case("var") => {
+                parts.push(parser.parse_nested_block(|n| {
+                    let name = n.expect_ident()?.to_string();
+                    let fallback = if n.try_parse(|n| n.expect_comma()).is_ok() {
+                        let mut fb = vec![];
+                        parse_property_value(n, &mut fb)?;
+                        Some(fb)
+                    } else {
+                        n.expect_exhausted()?;
+                        None
+                    };
+                    Ok(ValuePart::Var { name, fallback })
+                })?);
+            }
+            Token::Function(ref name) => {
+                let name = name.to_string();
+                let args = parser.parse_nested_block(|n| {
+                    let mut args = vec![];
+                    parse_property_value(n, &mut args)?;
+                    Ok(args)
+                })?;
+                parts.push(ValuePart::Function {
+                    name,
+                    args: Some(args),
+                });
+            }
+            Token::ParenthesisBlock | Token::SquareBracketBlock | Token::CurlyBracketBlock => {
+                parser.parse_nested_block(|n| parse_property_value(n, parts))?;
+            }
             Token::Semicolon => break,
-            Token::Ident(v) => out.push_str(v),
-            Token::Number { value: num, .. } => out.push_str(&num.to_string()),
-            Token::Dimension {
-                value: num, unit, ..
-            } => {
-                out.push_str(&num.to_string());
-                out.push_str(unit);
-            }
-            Token::Percentage { unit_value, .. } => {
-                out.push_str(&(unit_value * 100.0).to_string());
-                out.push('%');
-            }
-            Token::WhiteSpace(_) => out.push(' '),
-            Token::Comma => out.push(','),
-            Token::Delim(c) => out.push(*c),
-            Token::IDHash(name) | Token::Hash(name) => {
-                out.push('#');
-                out.push_str(name);
-            }
-            Token::Function(name) => {
-                out.push_str(name);
-                out.push('(');
-                parser.parse_nested_block(|nested| serialize_value_tokens(nested, out))?;
-                out.push(')');
-            }
-            _ => {}
+            Token::Comment(_) => {}
+            Token::WhiteSpace(_) if parts.is_empty() => {} // Ignore leading whitespace
+            _ => push_literal(parts, parser.slice_from(start)),
         }
     }
 
     Ok(())
+}
+
+fn push_literal(parts: &mut Vec<ValuePart>, literal: &str) {
+    if let Some(ValuePart::Literal(last)) = parts.last_mut() {
+        last.push_str(literal);
+    } else {
+        parts.push(ValuePart::Literal(literal.to_string()));
+    }
 }
 
 #[cfg(test)]
@@ -388,6 +440,22 @@ mod tests {
         assert!(stylesheet.rules.is_empty());
     }
 
+    fn assert_value_contains_literal(value: &[ValuePart], expected: &str, message: Option<&str>) {
+        let msg = if let Some(message) = message {
+            message.to_string()
+        } else {
+            format!(
+                "Expected value to contain a literal of '{}', but got '{:?}'",
+                expected, value
+            )
+        };
+        assert!(
+            ValuePart::as_pure_literal(value).is_some_and(|v| v.contains(expected)),
+            "{}",
+            msg
+        );
+    }
+
     #[test]
     fn test_basic_element_rule() {
         let mut stylesheet = CSSStyleSheet::new();
@@ -399,11 +467,12 @@ mod tests {
             stylesheet.rules[0].selector[0],
             Selector::Tag("p".to_string())
         );
-        assert!(
+        assert_value_contains_literal(
             stylesheet.rules[0]
                 .get_property_values(&stylesheet, "color")
-                .unwrap()
-                .contains(&"red")
+                .unwrap()[0],
+            "red",
+            None,
         );
     }
 
@@ -413,17 +482,19 @@ mod tests {
         parse_css_into_stylesheet("div { width: 100px; height: 50px; }", &mut stylesheet);
 
         assert_eq!(stylesheet.rules.len(), 1);
-        assert!(
+        assert_value_contains_literal(
             stylesheet.rules[0]
                 .get_property_values(&stylesheet, "width")
-                .unwrap()
-                .contains(&"100px")
+                .unwrap()[0],
+            "100px",
+            None,
         );
-        assert!(
+        assert_value_contains_literal(
             stylesheet.rules[0]
                 .get_property_values(&stylesheet, "height")
-                .unwrap()
-                .contains(&"50px")
+                .unwrap()[0],
+            "50px",
+            None,
         );
     }
 
@@ -460,11 +531,12 @@ mod tests {
             stylesheet.rules[0].selector[0],
             Selector::PseudoClass("root".to_string())
         );
-        assert!(
+        assert_value_contains_literal(
             stylesheet.rules[0]
                 .get_property_values(&stylesheet, "--main-color")
-                .unwrap()
-                .contains(&"#ff0000"),
+                .unwrap()[0],
+            "#ff0000",
+            None,
         );
     }
 
@@ -483,11 +555,12 @@ mod tests {
             stylesheet.rules[0].selector[1],
             Selector::PseudoClass("hover".to_string())
         );
-        assert!(
+        assert_value_contains_literal(
             stylesheet.rules[0]
                 .get_property_values(&stylesheet, "text-decoration")
-                .unwrap()
-                .contains(&"underline"),
+                .unwrap()[0],
+            "underline",
+            None,
         );
     }
 
@@ -499,18 +572,50 @@ mod tests {
             &mut stylesheet,
         );
 
-        assert!(
+        assert_value_contains_literal(
             stylesheet.rules[0]
                 .get_property_values(&stylesheet, "border")
-                .unwrap()
-                .contains(&"1px solid black"),
+                .unwrap()[0],
+            "1px solid black",
+            None,
         );
-        assert!(
+        assert_value_contains_literal(
             stylesheet.rules[0]
                 .get_property_values(&stylesheet, "background-color")
-                .unwrap()
-                .contains(&"#f3f3f3"),
+                .unwrap()[0],
+            "#f3f3f3",
+            None,
         );
+    }
+
+    #[test]
+    fn parses_non_var_functions() {
+        let mut ss = CSSStyleSheet::new();
+        parse_css_into_stylesheet(
+            "div { color: rgb(255, 0, 0); background: url(image.png); }",
+            &mut ss,
+        );
+        let props = ss.rules[0].properties(&ss).unwrap();
+        println!("{:?}", props[0].value);
+        println!("{:?}", props[1].value);
+    }
+
+    #[test]
+    fn parses_non_var_function_as_function_value_part() {
+        let mut ss = CSSStyleSheet::new();
+        parse_css_into_stylesheet("div { color: rgb(255, 0, 0); }", &mut ss);
+
+        assert_eq!(ss.rules.len(), 1, "rule should not be dropped");
+        let props = ss.rules[0].properties(&ss).unwrap();
+        assert_eq!(props.len(), 1);
+
+        match &props[0].value[..] {
+            [ValuePart::Function { name, args }] => {
+                assert_eq!(name, "rgb");
+                assert!(args.is_some(), "rgb should have args parsed");
+            }
+            other => panic!("expected Function value part, got {:?}", other),
+        }
     }
 
     #[test]
@@ -545,11 +650,12 @@ mod tests {
             stylesheet.rules[0].selector[0],
             Selector::Tag("h1".to_string())
         );
-        assert!(
+        assert_value_contains_literal(
             stylesheet.rules[0]
                 .get_property_values(&stylesheet, "font-size")
-                .unwrap()
-                .contains(&"24px"),
+                .unwrap()[0],
+            "24px",
+            None,
         );
 
         assert_eq!(stylesheet.rules[1].selector.len(), 1);
@@ -557,11 +663,12 @@ mod tests {
             stylesheet.rules[1].selector[0],
             Selector::Tag("p".to_string())
         );
-        assert!(
+        assert_value_contains_literal(
             stylesheet.rules[1]
                 .get_property_values(&stylesheet, "color")
-                .unwrap()
-                .contains(&"blue"),
+                .unwrap()[0],
+            "blue",
+            None,
         );
     }
 }
