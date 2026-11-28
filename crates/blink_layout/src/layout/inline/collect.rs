@@ -111,9 +111,9 @@ pub fn collect_recursive<M: TextMeasurer + ?Sized>(
         return; // Text nodes are leaf nodes, so we can return early
     }
 
-    let (_, style) = ctx
-        .style_cache
-        .get_or_compute(node_id, ctx.dom, ctx.stylesheet);
+    let Some(style) = ctx.style_cache.get_for_node(node_id) else {
+        return;
+    };
 
     if style.display.is_none() {
         return;
@@ -207,7 +207,7 @@ pub fn strip_trailing_space(items: &mut Vec<InlineItem>) -> bool {
 mod tests {
     use super::super::super::text::FixedWidth;
     use super::*;
-    use crate::style::StyleCache;
+    use crate::style::custom_properties::{CustomPropTable, PropInterner};
     use blink_css::CSSStyleSheet;
     use blink_dom::{Dom, get_tag_index};
 
@@ -224,16 +224,29 @@ mod tests {
         result
     }
 
+    fn make_test_ctx<'a>(
+        dom: &'a Dom,
+        stylesheet: &'a CSSStyleSheet,
+    ) -> crate::style::context::StyleContext<'a> {
+        // Lazy helper to leak the table and interner so we don't have to manage lifetimes in the test
+        let table = Box::leak(Box::new(CustomPropTable::new()));
+        let interner = Box::leak(Box::new(PropInterner::new()));
+        crate::style::context::StyleContext::new(dom, stylesheet, table, interner)
+    }
+
     #[test]
     fn test_collapse_basic_whitespace() {
         let mut dom = Dom::new();
         let text_id = dom.add_text("  Hello \n   world  ");
 
+        let stylesheet = CSSStyleSheet::new();
+        let ctx = make_test_ctx(&dom, &stylesheet);
+        let style_cache = ctx.compute_styles(text_id, None);
+
         let mut ctx = LayoutContext {
             dom: &dom,
-            stylesheet: &CSSStyleSheet::new(),
+            style_cache: &style_cache,
             text_measurer: &FixedWidth {},
-            style_cache: StyleCache::default(),
         };
 
         let items = collect_inline_items(&[text_id], &mut ctx);
@@ -248,11 +261,14 @@ mod tests {
         let t1 = dom.add_text("Hello ");
         let t2 = dom.add_text(" world"); // Leading space here should collapse
 
+        let stylesheet = CSSStyleSheet::new();
+        let ctx = make_test_ctx(&dom, &stylesheet);
+        let style_cache = ctx.compute_styles(t1, None);
+
         let mut ctx = LayoutContext {
             dom: &dom,
-            stylesheet: &CSSStyleSheet::new(),
+            style_cache: &style_cache,
             text_measurer: &FixedWidth {},
-            style_cache: StyleCache::default(),
         };
 
         let items = collect_inline_items(&[t1, t2], &mut ctx);
@@ -281,11 +297,14 @@ mod tests {
         dom.set_parent(t2, span).unwrap();
         dom.set_first_child(span, Some(t2)).unwrap();
 
+        let stylesheet = CSSStyleSheet::new();
+        let ctx = make_test_ctx(&dom, &stylesheet);
+        let style_cache = ctx.compute_styles(parent, None);
+
         let mut ctx = LayoutContext {
             dom: &dom,
-            stylesheet: &CSSStyleSheet::new(),
+            style_cache: &style_cache,
             text_measurer: &FixedWidth {},
-            style_cache: StyleCache::default(),
         };
 
         let items = collect_inline_items(&[parent], &mut ctx);
@@ -300,15 +319,40 @@ mod tests {
     #[test]
     fn test_forced_break_strips_trailing_space() {
         let mut dom = Dom::new();
+
+        let root = dom.add_element(0, None);
+        dom.set_virtual_root(root)
+            .expect("Failed to set virtual root");
+
+        let parent = dom.add_element(get_tag_index("div"), None);
         let t1 = dom.add_text("Hello \n ");
         let br = dom.add_element(get_tag_index("br"), None);
         let t2 = dom.add_text(" world");
 
+        dom.set_first_child(root, Some(parent))
+            .expect("Failed to set first child");
+        dom.set_parent(parent, root).expect("Failed to set parent");
+
+        dom.set_first_child(parent, Some(t1))
+            .expect("Failed to set first child");
+        dom.set_parent(t1, parent).expect("Failed to set parent");
+
+        dom.set_parent(br, parent).expect("Failed to set parent");
+        dom.set_next_sibling(t1, Some(br))
+            .expect("Failed to set next sibling");
+
+        dom.set_parent(t2, parent).expect("Failed to set parent");
+        dom.set_next_sibling(br, Some(t2))
+            .expect("Failed to set next sibling");
+
+        let stylesheet = CSSStyleSheet::new();
+        let ctx = make_test_ctx(&dom, &stylesheet);
+        let style_cache = ctx.compute_styles(root, None);
+
         let mut ctx = LayoutContext {
             dom: &dom,
-            stylesheet: &CSSStyleSheet::new(),
+            style_cache: &style_cache,
             text_measurer: &FixedWidth {},
-            style_cache: StyleCache::default(),
         };
 
         let items = collect_inline_items(&[t1, br, t2], &mut ctx);
@@ -322,11 +366,14 @@ mod tests {
         let mut dom = Dom::new();
         let t1 = dom.add_text("   \n   \t  ");
 
+        let stylesheet = CSSStyleSheet::new();
+        let ctx = make_test_ctx(&dom, &stylesheet);
+        let style_cache = ctx.compute_styles(t1, None);
+
         let mut ctx = LayoutContext {
             dom: &dom,
-            stylesheet: &CSSStyleSheet::new(),
+            style_cache: &style_cache,
             text_measurer: &FixedWidth {},
-            style_cache: StyleCache::default(),
         };
 
         let items = collect_inline_items(&[t1], &mut ctx);

@@ -87,14 +87,14 @@
 - Nodes live in a single `Vec<DomNode>` and are addressed by `DomNodeId`, a typed, 1-based, non-zero `u32` handle. `Option<DomNodeId>` is therefore 4 (four) bytes.
 - Tree structure uses intrusive links: each node stores `parent` and `next_sibling`, and elements store `first_child`. There is no per-node `Vec<Child>`.
 - `NodeKind` is `Element`, `Text` or `EmptyLeaf` (`<br>`, `<hr>`).
-- Tag names are `u8` indices into a sorted static table of HTML tags: O(log n) to look up by name, O(1) to get the name back.
+- Tag names are `u8` indices. Low indices address a sorted static table of HTML tags: O(log n) to look up by name, O(1) to get the name back. Elements outside that table (custom elements and other unknown names) are interned per `Dom` by `Dom::intern_custom_tag`, so each distinct name gets one index no matter how many elements use it. One document can hold about 140 distinct custom names (`MAX_CUSTOM_TAGS`); any further new name is treated as `div`.
 - Attributes are stored out of line and referenced from element nodes, so text nodes and attribute-less elements pay nothing for them.
 - Nodes are stored in a `Vec<DomNode>`; attributes and character data are stored out-of-line in separate typed `SlotStore`s.
 
 #### Style (`blink_layout::style`)
 
-- Split into `cascade`, `matching` and `types` modules.
-- Selectors: type, `#id`, `.class`, compound selectors, and the descendant combinator.
+- Split into `cascade`, `context`, `custom_properties`, `matching` and `types` modules.
+- Selectors: type, `#id`, `.class`, compound selectors, the descendant combinator, `:root`, and `:nth-child(<integer>)`.
 - Cascade: matching rules are ordered by specificity, with source order breaking ties.
 - Supported properties:
   - `display` (`block`, `inline`, `inline-block`, `none`)
@@ -106,7 +106,7 @@
 
 #### Layout (`blink_layout::layout`)
 
-- Layout state lives in a `LayoutContext<M: TextMeasurer>`, which holds the DOM, stylesheet, text measurer and style cache. `build_layout_tree` and `layout_node` are methods on it.
+- Layout state lives in a `LayoutContext<M: TextMeasurer>`, which borrows the DOM, the `StyleCache` (filled beforehand by `StyleContext::compute_styles`) and the text measurer. `build_layout_tree` and `layout_node` are methods on it.
 - Layout is a recursive pass over the DOM. For each node it looks up the computed style, prunes `display: none`, resolves size from the parent's `ConstraintSpace`, lays out children, then resolves any auto height.
 - Box model: each fragment's rect is its border box. Children are placed inside the parent's padding and border. `width`/`height` size the content box.
 - Block children stack vertically, separated by their top and bottom margins. Inline children flow left to right on a line whose height is the tallest child; inline-block margins are counted when lines are measured and broken. Auto-width blocks take the available width; auto-width inline boxes shrink-wrap their content.
@@ -115,7 +115,7 @@
 - Fragments are constructed with parent-relative coordinates. Absolute coordinates are resolved during fragment traversal, not by modifying the layout tree.
 - Fragment geometry and tree relationships are immutable after construction.
 - Unsupported `display` declarations are ignored.
-- Unknown tag names are registered dynamically, but generic tag-name lookup currently falls back to `div`.
+- Custom elements resolve through `Dom::tag_name` and `Dom::node_tag_name`, so they match type selectors by their own name and get the `inline` user-agent default. The free function `get_tag_name` and `DomNode::get_tag_name` only know built-in tags and report custom elements as `div`.
 
 #### Rendering (`blink_render`)
 
@@ -140,8 +140,9 @@ Known gaps, many of which are good places to start contributing (see [CONTRIBUTI
 - Only `px` lengths are parsed (no percentages, `em`, etc.).
 - Only `none`, `hidden` and `solid` borders. Other styles (`dashed`, `dotted`, `double`) make the whole declaration invalid.
 - No `position`, floats, or flexbox.
-- No property inheritance.
-- No child, sibling or attribute selectors, no pseudo-classes, no `!important`.
+- No implicit property inheritance. Only the explicit `inherit` and `initial` keywords (and `all: initial`) are handled. None of the supported properties are inherited in CSS, so this only starts to matter once `color` and font properties exist.
+- No child, sibling or attribute selectors, no pseudo-classes other than `:root` and `:nth-child(<integer>)`, no `!important`.
+- `var()` resolves against a `CustomPropTable` that the caller must build with `CustomPropTable::build`. The engine does not yet support `@property` or `@custom-media`.
 
 ---
 
@@ -174,7 +175,7 @@ Previously, the `dense-core` feature was used to test the alternative DOM storag
 cargo test --workspace --features blink_dom/dense-core
 ```
 
-Unit tests cover selector matching, specificity, descendant chains, length parsing, and attribute lookup across text and `<br>` nodes.
+Unit tests cover selector matching, specificity, descendant chains, length parsing, custom-element tag interning, and attribute lookup across text and `<br>` nodes.
 
 The golden layout tests cover six fixtures: `basic`, `inline_wrapping`, `mixed_block_inline`, `nested_inline`, `display_none`, and `box_model`. Run them with:
 

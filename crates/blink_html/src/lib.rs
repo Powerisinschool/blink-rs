@@ -10,7 +10,9 @@ pub struct HtmlDom(pub RefCell<Dom>);
 impl HtmlDom {
     pub fn new() -> Self {
         let mut dom = Dom::new();
-        dom.add_element(0, None);
+        let doc_root = dom.add_element(0, None);
+        dom.set_virtual_root(doc_root)
+            .expect("Failed to set virtual root");
         Self(RefCell::new(dom))
     }
 }
@@ -38,19 +40,32 @@ impl TreeSink for HtmlDom {
     }
 
     fn get_document(&self) -> Self::Handle {
-        self.0.borrow().root_node_id()
+        self.0
+            .borrow()
+            .root_node_id()
+            .expect("Document should have a root node")
     }
 
     fn elem_name<'a>(&'a self, target: &'a Self::Handle) -> ExpandedName<'a> {
         let dom = self.0.borrow();
         let tag = dom.get_tag(*target).unwrap_or(0);
-        let boxed_name = dom
-            .tag_registry
-            .get(&tag)
-            .expect("Tag should be registered");
+        let name: &QualName = dom.tag_qual_name(tag).expect("Tag should be registered");
 
-        let ptr = &**boxed_name as *const QualName;
+        let ptr: *const QualName = name;
 
+        // SAFETY: `ExpandedName<'a>` must borrow for `'a` (the borrow of `self`),
+        // but `name` is only borrowed for as long as the `RefCell` guard `dom`
+        // lives. Extending it is sound because `name` points into a
+        // `Box<QualName>` owned by `Dom::tag_registry`, and that registry is
+        // insert-only and private to `blink_dom`: an entry is never dropped,
+        // replaced or moved (growing the map moves the `Box` pointers, not the
+        // heap allocations they point to) while the `Dom` is alive. The `Dom`
+        // lives inside `self`, so it outlives `'a`.
+        //
+        // This breaks if anything replaces or drops the `Dom` while an
+        // `ExpandedName` is live. `HtmlDom`'s field is public, so callers must
+        // not do that during a parse. The test
+        // `elem_name_stays_valid_while_registry_grows` exercises the growth case.
         unsafe { (*ptr).expanded() }
     }
 
@@ -64,8 +79,7 @@ impl TreeSink for HtmlDom {
         let mut tag = get_tag_index(&name.local);
 
         if tag == 0 {
-            tag = (115 + dom.tag_registry.len()) as u8;
-            dom.tag_registry.insert(tag, Box::new(name));
+            tag = dom.intern_custom_tag(name);
         }
 
         let attrs_payload = if attrs.is_empty() {
@@ -73,6 +87,7 @@ impl TreeSink for HtmlDom {
         } else {
             Some(attrs.into_boxed_slice())
         };
+
         dom.add_element(tag, attrs_payload)
     }
 
@@ -309,7 +324,9 @@ mod tests {
         let dom = parse_html(html);
 
         // Check that the root node has one child (the div)
-        let document = dom.root_node_id();
+        let document = dom
+            .root_node_id()
+            .expect("Document should have a root node");
         let html_id = dom
             .get_first_child(document)
             .expect("Document should have a child (html)");
@@ -462,5 +479,69 @@ mod tests {
         assert_eq!(dom.get_parent(moving), Some(destination));
         assert_eq!(dom.get_parent(target), Some(destination));
         assert_eq!(dom.get_parent(destination_last), Some(destination));
+    }
+
+    /// `<body>`'s element children, in order.
+    fn body_children(dom: &Dom) -> Vec<DomNodeId> {
+        let document = dom.root_node_id().expect("document root");
+        let html = dom.get_first_child(document).expect("html");
+        let head = dom.get_first_child(html).expect("head");
+        let body = dom.get_next_sibling(head).expect("body");
+
+        let mut out = Vec::new();
+        let mut next = dom.get_first_child(body);
+        while let Some(id) = next {
+            out.push(id);
+            next = dom.get_next_sibling(id);
+        }
+        out
+    }
+
+    #[test]
+    fn custom_elements_keep_their_names() {
+        let dom = parse_html("<x-a></x-a><x-b></x-b><x-a></x-a>");
+        let kids = body_children(&dom);
+
+        assert_eq!(kids.len(), 3);
+        assert_eq!(dom.node_tag_name(kids[0]), Some("x-a"));
+        assert_eq!(dom.node_tag_name(kids[1]), Some("x-b"));
+        assert_eq!(dom.node_tag_name(kids[2]), Some("x-a"));
+        assert_eq!(dom.get_tag(kids[0]), dom.get_tag(kids[2]));
+        assert_ne!(dom.get_tag(kids[0]), dom.get_tag(kids[1]));
+    }
+
+    #[test]
+    fn many_repeated_custom_elements_do_not_wrap_the_tag_index() {
+        // Before interning, every custom element took a fresh index, so a few
+        // hundred of them wrapped `u8` and collided with built-in tags.
+        let html = format!("{}<div></div>", "<x-repeat></x-repeat>".repeat(500));
+        let dom = parse_html(&html);
+        let kids = body_children(&dom);
+
+        assert_eq!(kids.len(), 501);
+        let first = dom.get_tag(kids[0]);
+        for &id in &kids[..500] {
+            assert_eq!(dom.get_tag(id), first);
+            assert_eq!(dom.node_tag_name(id), Some("x-repeat"));
+        }
+        assert_eq!(dom.get_tag(kids[500]), Some(get_tag_index("div")));
+    }
+
+    #[test]
+    fn elem_name_stays_valid_while_registry_grows() {
+        // Parsing makes html5ever call `elem_name` throughout while new custom
+        // names keep being registered (forcing the registry map to grow).
+        let mut html = String::new();
+        for i in 0..100 {
+            html.push_str(&format!("<x-n{i}><x-n{i}></x-n{i}></x-n{i}>"));
+        }
+        let dom = parse_html(&html);
+        let kids = body_children(&dom);
+
+        assert_eq!(kids.len(), 100);
+        for (i, &id) in kids.iter().enumerate() {
+            let expected = format!("x-n{i}");
+            assert_eq!(dom.node_tag_name(id), Some(expected.as_str()));
+        }
     }
 }

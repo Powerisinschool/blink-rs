@@ -1,5 +1,6 @@
 use blink_layout::geom::PhysicalOffset;
 use blink_layout::layout::{FragmentArena, FragmentKind, LayoutFragment};
+use blink_layout::style::types::SpecifiedColor;
 use blink_layout::style::{BorderSide, EdgeSizes, StyleCache};
 use blink_layout::walker::{FragmentWalker, Renderer};
 use fontdue::Font;
@@ -26,8 +27,8 @@ impl Canvas {
     ) {
         let widths = borders.widths();
         let resolve_color = |side: BorderSide| match side.color {
-            Some(c) => ColorU8::from_rgba(c.r, c.g, c.b, c.a),
-            None => ColorU8::from_rgba(0, 0, 0, 255), // default "currentcolor" = black
+            SpecifiedColor::Color(c) => ColorU8::from_rgba(c.r, c.g, c.b, c.a),
+            SpecifiedColor::CurrentColor => ColorU8::from_rgba(0, 0, 0, 255), // default "currentcolor" = black
         };
 
         if widths.top > 0.0 {

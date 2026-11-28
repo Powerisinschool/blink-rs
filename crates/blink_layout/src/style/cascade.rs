@@ -1,168 +1,300 @@
-use super::types::{BorderSide, BorderStyle, Color, ComputedStyle, Display, EdgeSizes};
+use super::types::{
+    BorderSide, BorderStyle, Color, ComputedStyle, Display, EdgeSizes, SpecifiedColor,
+};
+use crate::style::context::StyleContext;
+use crate::style::custom_properties::resolve_var_parts;
 use blink_css::CSSStyleRule;
 
 pub(super) fn cascade_properties(
     matched_rules: &mut Vec<&CSSStyleRule>,
+    parent_style: Option<&ComputedStyle>,
+    node_id: usize,
+    ctx: &StyleContext,
     display: Display,
 ) -> ComputedStyle {
     matched_rules.sort_by_key(|a| a.specificity());
+    let matched_rules = &*matched_rules; // Freeze the matched_rules slice to prevent further modifications
 
     let mut style = ComputedStyle::new(display, None, None);
+    let default_style = style.clone();
 
     for rule in matched_rules {
-        let props = &rule.properties;
+        let Some(props) = rule.properties(ctx.stylesheet) else {
+            continue; // Skip rules without properties
+        };
 
-        if let Some(d) = props.get("display").and_then(|v| parse_display(v)) {
-            style.display = d;
+        for declaration in props {
+            let name = declaration.name.as_str();
+
+            let Some(value) = resolve_var_parts(
+                &declaration.value,
+                node_id,
+                ctx.custom_prop_table,
+                ctx.prop_interner,
+            ) else {
+                continue; // Skip if the value cannot be resolved
+            };
+
+            match value.trim() {
+                "inherit" => {
+                    inherit_property(&mut style, parent_style, &default_style, name);
+                    continue; // Skip further processing for inherited properties
+                }
+                "initial" => {
+                    inherit_property(&mut style, None, &default_style, name);
+                    continue; // Skip further processing for initial properties
+                }
+                _ => {}
+            }
+
+            let value = value.as_str();
+
+            match name {
+                "all" if value.trim() == "initial" => {
+                    style = ComputedStyle::new(display, None, None);
+                }
+                "display" => {
+                    if let Some(d) = parse_display(value) {
+                        style.display = d;
+                    }
+                }
+                "width" => {
+                    if value.trim() == "auto" {
+                        style.width = None;
+                    } else if let Some(w) = parse_px_value(value) {
+                        style.width = Some(w);
+                    }
+                }
+                "height" => {
+                    if value.trim() == "auto" {
+                        style.height = None;
+                    } else if let Some(h) = parse_px_value(value) {
+                        style.height = Some(h);
+                    }
+                }
+                name if name.starts_with("margin") => {
+                    apply_edge_declaration(name, "margin", value, true, &mut style.margin);
+                }
+                name if name.starts_with("padding") => {
+                    apply_edge_declaration(name, "padding", value, false, &mut style.padding);
+                }
+                name if name.starts_with("border") => {
+                    apply_border_properties(name, value, &mut style.border);
+                }
+                _ => {}
+            }
         }
-
-        if let Some(w) = props.get("width") {
-            style.width = parse_px_value(w);
-        }
-
-        if let Some(h) = props.get("height") {
-            style.height = parse_px_value(h);
-        }
-
-        apply_edge_properties(
-            props,
-            "margin",
-            ["margin-top", "margin-right", "margin-bottom", "margin-left"],
-            true,
-            &mut style.margin,
-        );
-
-        apply_edge_properties(
-            props,
-            "padding",
-            [
-                "padding-top",
-                "padding-right",
-                "padding-bottom",
-                "padding-left",
-            ],
-            false,
-            &mut style.padding,
-        );
-
-        apply_border_properties(props, &mut style.border)
     }
 
     style
 }
 
-fn apply_edge_properties(
-    props: &std::collections::HashMap<String, String>,
-    shorthand: &str,
-    sides: [&str; 4],
+fn inherit_property(
+    style: &mut ComputedStyle,
+    parent_style: Option<&ComputedStyle>,
+    default_style: &ComputedStyle,
+    name: &str,
+) {
+    let source = parent_style.unwrap_or(default_style);
+
+    macro_rules! copy_field {
+        ($($field:tt)+) => {
+            style.$($field)+ = source.$($field)+.clone()
+        };
+    }
+
+    macro_rules! match_edges {
+        ($prefix:literal, $target:ident) => {
+            match name {
+                $prefix => copy_field!($target),
+                concat!($prefix, "-top") => copy_field!($target.top),
+                concat!($prefix, "-right") => copy_field!($target.right),
+                concat!($prefix, "-bottom") => copy_field!($target.bottom),
+                concat!($prefix, "-left") => copy_field!($target.left),
+                _ => return, // Not a relevant property for this edge
+            }
+        };
+    }
+
+    macro_rules! match_border_prefix_for_prop {
+        ($prefix:ident.$side:ident, $prefix_str:expr; $($prop:ident, $prop_str:literal),+) => {
+            if name == $prefix_str {
+                copy_field!($prefix.$side);
+                return;
+            }
+            $(
+                else if name == concat!($prefix_str, "-", $prop_str) {
+                    copy_field!($prefix.$side.$prop);
+                    return;
+                }
+            )+
+        };
+    }
+
+    macro_rules! match_borders {
+        ($($side:tt => $side_str:literal),+) => {
+            if name == "border" {
+                copy_field!(border);
+            } else if name == "border-width" {
+                $(
+                    copy_field!(border.$side.width);
+                )+
+            } else if name == "border-style" {
+                $(
+                    copy_field!(border.$side.style);
+                )+
+            } else if name == "border-color" {
+                $(
+                    copy_field!(border.$side.color);
+                )+
+            } else {
+                $(
+                    match_border_prefix_for_prop!(border.$side, concat!("border-", $side_str); width, "width", style, "style", color, "color");
+                )+
+            }
+        };
+    }
+
+    match name {
+        "all" => *style = source.clone(),
+        "display" => copy_field!(display),
+        "width" => copy_field!(width),
+        "height" => copy_field!(height),
+        _ if name.starts_with("margin") => {
+            match_edges!("margin", margin);
+        }
+        _ if name.starts_with("padding") => {
+            match_edges!("padding", padding);
+        }
+        _ if name.starts_with("border") => {
+            match_borders!(
+                top => "top", right => "right", bottom => "bottom", left => "left"
+            );
+        }
+        _ => {}
+    }
+}
+
+fn apply_edge_declaration(
+    name: &str,
+    prefix: &str,
+    value: &str,
     allow_negative: bool,
     target: &mut EdgeSizes<f32>,
 ) {
     let clamp = |v: f32| if allow_negative { v } else { v.max(0.0) };
-    if let Some(all) = props
-        .get(shorthand)
-        .and_then(|v| parse_edge_sizes(v, allow_negative))
-    {
-        *target = all;
-    }
-    if let Some(v) = props.get(sides[0]).and_then(|v| parse_px_value(v)) {
-        target.top = clamp(v);
-    }
-    if let Some(v) = props.get(sides[1]).and_then(|v| parse_px_value(v)) {
-        target.right = clamp(v);
-    }
-    if let Some(v) = props.get(sides[2]).and_then(|v| parse_px_value(v)) {
-        target.bottom = clamp(v);
-    }
-    if let Some(v) = props.get(sides[3]).and_then(|v| parse_px_value(v)) {
-        target.left = clamp(v);
+
+    match name.strip_prefix(prefix) {
+        Some("") => {
+            if let Some(all) = parse_edge_sizes(value, allow_negative) {
+                *target = all;
+            }
+        }
+        Some("-top") => {
+            if let Some(v) = parse_px_value(value) {
+                target.top = clamp(v);
+            }
+        }
+        Some("-right") => {
+            if let Some(v) = parse_px_value(value) {
+                target.right = clamp(v);
+            }
+        }
+        Some("-bottom") => {
+            if let Some(v) = parse_px_value(value) {
+                target.bottom = clamp(v);
+            }
+        }
+        Some("-left") => {
+            if let Some(v) = parse_px_value(value) {
+                target.left = clamp(v);
+            }
+        }
+        _ => (), // Not a relevant property for this edge
     }
 }
 
-fn apply_border_properties(
-    props: &std::collections::HashMap<String, String>,
-    border: &mut EdgeSizes<BorderSide>,
-) {
-    if let Some(side) = props.get("border").and_then(|v| parse_border_shorthand(v)) {
-        *border = EdgeSizes::all(side);
-    }
-    if let Some(w) = props
-        .get("border-width")
-        .and_then(|v| parse_edge_sizes(v, false))
-    {
-        border.top.width = w.top;
-        border.right.width = w.right;
-        border.bottom.width = w.bottom;
-        border.left.width = w.left;
-    }
-    if let Some(s) = props.get("border-style")
-        && let Some(parsed) = s
-            .split_whitespace()
-            .map(parse_border_style)
-            .collect::<Option<Vec<_>>>()
-        && let Some(edges) = expand_four_sides(&parsed)
-    {
-        border.top.style = edges.top;
-        border.right.style = edges.right;
-        border.bottom.style = edges.bottom;
-        border.left.style = edges.left;
-    }
-    if let Some(c) = props.get("border-color")
-        && let Some(parsed) = c
-            .split_whitespace()
-            .map(parse_border_color)
-            .collect::<Option<Vec<_>>>()
-        && let Some(edges) = expand_four_sides(&parsed)
-    {
-        border.top.color = edges.top;
-        border.right.color = edges.right;
-        border.bottom.color = edges.bottom;
-        border.left.color = edges.left;
-    }
+fn apply_border_properties(name: &str, value: &str, border: &mut EdgeSizes<BorderSide>) {
+    let Some(rest) = name.strip_prefix("border") else {
+        return; // Not a border property
+    };
 
-    let sides = [
-        (
-            "border-top",
-            "border-top-width",
-            "border-top-style",
-            "border-top-color",
-            &mut border.top,
-        ),
-        (
-            "border-right",
-            "border-right-width",
-            "border-right-style",
-            "border-right-color",
-            &mut border.right,
-        ),
-        (
-            "border-bottom",
-            "border-bottom-width",
-            "border-bottom-style",
-            "border-bottom-color",
-            &mut border.bottom,
-        ),
-        (
-            "border-left",
-            "border-left-width",
-            "border-left-style",
-            "border-left-color",
-            &mut border.left,
-        ),
-    ];
+    match rest {
+        "" => {
+            if let Some(side) = parse_border_shorthand(value) {
+                *border = EdgeSizes::all(side);
+            }
+        }
+        "-width" => {
+            if let Some(w) = parse_edge_sizes(value, false) {
+                border.top.width = w.top;
+                border.right.width = w.right;
+                border.bottom.width = w.bottom;
+                border.left.width = w.left;
+            }
+        }
+        "-style" => {
+            if let Some(parsed) = value
+                .split_whitespace()
+                .map(parse_border_style)
+                .collect::<Option<Vec<_>>>()
+                && let Some(edges) = expand_four_sides(&parsed)
+            {
+                border.top.style = edges.top;
+                border.right.style = edges.right;
+                border.bottom.style = edges.bottom;
+                border.left.style = edges.left;
+            }
+        }
+        "-color" => {
+            if let Some(parsed) = value
+                .split_whitespace()
+                .map(parse_border_color)
+                .collect::<Option<Vec<_>>>()
+                && let Some(edges) = expand_four_sides(&parsed)
+            {
+                border.top.color = edges.top;
+                border.right.color = edges.right;
+                border.bottom.color = edges.bottom;
+                border.left.color = edges.left;
+            }
+        }
+        _ => {
+            let (side_rest, side_target) = if let Some(r) = rest.strip_prefix("-top") {
+                (r, &mut border.top)
+            } else if let Some(r) = rest.strip_prefix("-right") {
+                (r, &mut border.right)
+            } else if let Some(r) = rest.strip_prefix("-bottom") {
+                (r, &mut border.bottom)
+            } else if let Some(r) = rest.strip_prefix("-left") {
+                (r, &mut border.left)
+            } else {
+                return; // Not a relevant property for border
+            };
 
-    for (shorthand, w_key, s_key, c_key, target) in sides {
-        if let Some(side) = props.get(shorthand).and_then(|v| parse_border_shorthand(v)) {
-            *target = side;
-        }
-        if let Some(w) = props.get(w_key).and_then(|v| parse_px_value(v)) {
-            target.width = w.max(0.0);
-        }
-        if let Some(s) = props.get(s_key).and_then(|v| parse_border_style(v)) {
-            target.style = s;
-        }
-        if let Some(c) = props.get(c_key).and_then(|v| parse_border_color(v)) {
-            target.color = c;
+            match side_rest {
+                "" => {
+                    if let Some(side) = parse_border_shorthand(value) {
+                        *side_target = side;
+                    }
+                }
+                "-width" => {
+                    if let Some(w) = parse_px_value(value) {
+                        side_target.width = w.max(0.0);
+                    }
+                }
+                "-style" => {
+                    if let Some(s) = parse_border_style(value) {
+                        side_target.style = s;
+                    }
+                }
+                "-color" => {
+                    if let Some(c) = parse_border_color(value) {
+                        side_target.color = c;
+                    }
+                }
+                _ => (), // Not a relevant property for this border edge
+            }
         }
     }
 }
@@ -257,145 +389,127 @@ fn parse_hex_color(hex_str: &str) -> Option<Color> {
     Some(color)
 }
 
-fn parse_border_color(value: &str) -> Option<Option<Color>> {
-    let v = value.trim();
-    if v.eq_ignore_ascii_case("currentcolor") {
-        return Some(None);
-    }
+fn parse_border_color(value: &str) -> Option<SpecifiedColor> {
+    let v = value.trim().to_ascii_lowercase();
 
-    if v.eq_ignore_ascii_case("transparent") {
-        return Some(Some(Color {
-            r: 0,
-            g: 0,
-            b: 0,
-            a: 0,
-        }));
-    }
-
-    if let Some(hex_str) = v.strip_prefix('#') {
-        return parse_hex_color(hex_str).map(Some);
-    }
-
-    let named = match v.to_ascii_lowercase().as_str() {
-        "black" => Color {
-            r: 0,
-            g: 0,
-            b: 0,
-            a: 255,
-        },
-        "silver" => Color {
-            r: 192,
-            g: 192,
-            b: 192,
-            a: 255,
-        },
-        "gray" | "grey" => Color {
-            r: 128,
-            g: 128,
-            b: 128,
-            a: 255,
-        },
-        "white" => Color {
-            r: 255,
-            g: 255,
-            b: 255,
-            a: 255,
-        },
-        "maroon" => Color {
-            r: 128,
-            g: 0,
-            b: 0,
-            a: 255,
-        },
-        "red" => Color {
-            r: 255,
-            g: 0,
-            b: 0,
-            a: 255,
-        },
-        "purple" => Color {
-            r: 128,
-            g: 0,
-            b: 128,
-            a: 255,
-        },
-        "fuchsia" | "magenta" => Color {
-            r: 255,
-            g: 0,
-            b: 255,
-            a: 255,
-        },
-        "green" => Color {
-            r: 0,
-            g: 128,
-            b: 0,
-            a: 255,
-        },
-        "lime" => Color {
-            r: 0,
-            g: 255,
-            b: 0,
-            a: 255,
-        },
-        "olive" => Color {
-            r: 128,
-            g: 128,
-            b: 0,
-            a: 255,
-        },
-        "yellow" => Color {
-            r: 255,
-            g: 255,
-            b: 0,
-            a: 255,
-        },
-        "navy" => Color {
-            r: 0,
-            g: 0,
-            b: 128,
-            a: 255,
-        },
-        "blue" => Color {
-            r: 0,
-            g: 0,
-            b: 255,
-            a: 255,
-        },
-        "teal" => Color {
-            r: 0,
-            g: 128,
-            b: 128,
-            a: 255,
-        },
-        "aqua" | "cyan" => Color {
-            r: 0,
-            g: 255,
-            b: 255,
-            a: 255,
-        },
-        "orange" => Color {
-            r: 255,
-            g: 165,
-            b: 0,
-            a: 255,
-        }, // CSS 2.1 addition
-        "transparent" => Color {
-            r: 0,
-            g: 0,
-            b: 0,
-            a: 0,
-        },
-        _ => return None,
-    };
-
-    Some(Some(named))
+    Some(match v.as_str() {
+        "inherit" | "initial" | "unset" | "revert" => return None, // invalid as the only proper case is caught at the top level
+        "currentcolor" => SpecifiedColor::CurrentColor,
+        "transparent" => SpecifiedColor::Color(Color::TRANSPARENT),
+        v if v.starts_with('#') => parse_hex_color(&v[1..]).map(SpecifiedColor::Color)?,
+        v => SpecifiedColor::Color(match v {
+            "black" => Color {
+                r: 0,
+                g: 0,
+                b: 0,
+                a: 255,
+            },
+            "silver" => Color {
+                r: 192,
+                g: 192,
+                b: 192,
+                a: 255,
+            },
+            "gray" | "grey" => Color {
+                r: 128,
+                g: 128,
+                b: 128,
+                a: 255,
+            },
+            "white" => Color {
+                r: 255,
+                g: 255,
+                b: 255,
+                a: 255,
+            },
+            "maroon" => Color {
+                r: 128,
+                g: 0,
+                b: 0,
+                a: 255,
+            },
+            "red" => Color {
+                r: 255,
+                g: 0,
+                b: 0,
+                a: 255,
+            },
+            "purple" => Color {
+                r: 128,
+                g: 0,
+                b: 128,
+                a: 255,
+            },
+            "fuchsia" | "magenta" => Color {
+                r: 255,
+                g: 0,
+                b: 255,
+                a: 255,
+            },
+            "green" => Color {
+                r: 0,
+                g: 128,
+                b: 0,
+                a: 255,
+            },
+            "lime" => Color {
+                r: 0,
+                g: 255,
+                b: 0,
+                a: 255,
+            },
+            "olive" => Color {
+                r: 128,
+                g: 128,
+                b: 0,
+                a: 255,
+            },
+            "yellow" => Color {
+                r: 255,
+                g: 255,
+                b: 0,
+                a: 255,
+            },
+            "navy" => Color {
+                r: 0,
+                g: 0,
+                b: 128,
+                a: 255,
+            },
+            "blue" => Color {
+                r: 0,
+                g: 0,
+                b: 255,
+                a: 255,
+            },
+            "teal" => Color {
+                r: 0,
+                g: 128,
+                b: 128,
+                a: 255,
+            },
+            "aqua" | "cyan" => Color {
+                r: 0,
+                g: 255,
+                b: 255,
+                a: 255,
+            },
+            "orange" => Color {
+                r: 255,
+                g: 165,
+                b: 0,
+                a: 255,
+            }, // CSS 2.1 addition
+            _ => return None,
+        }),
+    })
 }
 
 fn parse_border_shorthand(value: &str) -> Option<BorderSide> {
     let mut side = BorderSide {
         width: 3.0, // CSS "medium" default when width is omitted
         style: BorderStyle::None,
-        color: None,
+        color: SpecifiedColor::CurrentColor,
     };
     let mut saw_any = false;
     for part in value.split_whitespace() {
@@ -444,7 +558,7 @@ mod tests {
         // Hex Color
         assert_eq!(
             parse_border_color("#ff00ff"),
-            Some(Some(Color {
+            Some(SpecifiedColor::Color(Color {
                 r: 255,
                 g: 0,
                 b: 255,
@@ -455,7 +569,7 @@ mod tests {
         // Named Color
         assert_eq!(
             parse_border_color("white"),
-            Some(Some(Color {
+            Some(SpecifiedColor::Color(Color {
                 r: 255,
                 g: 255,
                 b: 255,
@@ -466,7 +580,7 @@ mod tests {
         // Transparent
         assert_eq!(
             parse_border_color("transparent"),
-            Some(Some(Color {
+            Some(SpecifiedColor::Color(Color {
                 r: 0,
                 g: 0,
                 b: 0,
@@ -475,7 +589,10 @@ mod tests {
         );
 
         // Inherited color
-        assert_eq!(parse_border_color("currentcolor"), Some(None));
+        assert_eq!(
+            parse_border_color("currentcolor"),
+            Some(SpecifiedColor::CurrentColor)
+        );
     }
 
     #[test]
@@ -540,7 +657,7 @@ mod tests {
         // 3-digit and 8-digit hex colors
         assert_eq!(
             parse_border_color("#f0a"),
-            Some(Some(Color {
+            Some(SpecifiedColor::Color(Color {
                 r: 255,
                 g: 0,
                 b: 170,
@@ -549,7 +666,7 @@ mod tests {
         );
         assert_eq!(
             parse_border_color("#11223380"),
-            Some(Some(Color {
+            Some(SpecifiedColor::Color(Color {
                 r: 0x11,
                 g: 0x22,
                 b: 0x33,
@@ -558,10 +675,13 @@ mod tests {
         );
 
         // Case-insensitivity and invalid hex strings
-        assert_eq!(parse_border_color("CURRENTCOLOR"), Some(None));
+        assert_eq!(
+            parse_border_color("CURRENTCOLOR"),
+            Some(SpecifiedColor::CurrentColor)
+        );
         assert_eq!(
             parse_border_color("ReD"),
-            Some(Some(Color {
+            Some(SpecifiedColor::Color(Color {
                 r: 255,
                 g: 0,
                 b: 0,
@@ -577,7 +697,7 @@ mod tests {
             Some(BorderSide {
                 width: 2.0,
                 style: BorderStyle::Solid,
-                color: Some(Color {
+                color: SpecifiedColor::Color(Color {
                     r: 0,
                     g: 255,
                     b: 0,
@@ -590,7 +710,7 @@ mod tests {
             Some(BorderSide {
                 width: 4.0,
                 style: BorderStyle::Solid,
-                color: Some(Color {
+                color: SpecifiedColor::Color(Color {
                     r: 0,
                     g: 0,
                     b: 255,
@@ -603,7 +723,7 @@ mod tests {
             Some(BorderSide {
                 width: 3.0,
                 style: BorderStyle::Solid,
-                color: None,
+                color: SpecifiedColor::CurrentColor,
             })
         );
         assert_eq!(
@@ -611,7 +731,7 @@ mod tests {
             Some(BorderSide {
                 width: 5.0,
                 style: BorderStyle::None,
-                color: None,
+                color: SpecifiedColor::CurrentColor,
             })
         );
         assert_eq!(parse_border_shorthand(""), None);

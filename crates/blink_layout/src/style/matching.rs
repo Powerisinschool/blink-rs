@@ -60,11 +60,12 @@ fn match_compound(node_id: DomNodeId, dom: &Dom, parts: &[Selector]) -> bool {
     for part in parts {
         match part {
             Selector::Tag(target_tag) => {
-                let node = match dom.get_node(node_id) {
-                    Some(n) => n,
-                    None => return false,
-                };
-                if node.get_tag_name().is_none_or(|tag| tag != *target_tag) {
+                // Resolve through the `Dom` so custom elements match their own
+                // name (a bare `DomNode` reports them all as `div`).
+                if dom
+                    .node_tag_name(node_id)
+                    .is_none_or(|tag| tag != *target_tag)
+                {
                     return false;
                 }
             }
@@ -96,10 +97,103 @@ fn match_compound(node_id: DomNodeId, dom: &Dom, parts: &[Selector]) -> bool {
                     return false;
                 }
             }
+            Selector::PseudoClass(name) => {
+                match name.as_str() {
+                    "root" => {
+                        if !is_document_element(node_id, dom) {
+                            return false;
+                        }
+                    }
+                    _ => return false, // Unsupported pseudo-class
+                }
+            }
+            Selector::PseudoElement(_name) => {
+                // TODO: Pseudo-elements are not supported in this matching logic
+                return false;
+            }
+            Selector::Function(name, args) => {
+                match name.as_str() {
+                    "nth-child" => {
+                        if args.len() != 1 {
+                            return false; // Invalid number of arguments
+                        }
+                        let n = args[0].parse::<usize>().ok();
+                        if let Some(n) = n {
+                            if n == 0 {
+                                return false; // Indexes from 1
+                            }
+
+                            let parent_id = match dom.get_parent(node_id) {
+                                Some(pid) => pid,
+                                None => return false,
+                            };
+
+                            let first_child = dom
+                                .get_first_child(parent_id)
+                                .expect("Parent should at least have us as a child");
+                            let first_element_child = match dom.get_node(first_child) {
+                                Some(node) => {
+                                    if !node.is_element() {
+                                        next_element_sibling(first_child, dom)
+                                    } else {
+                                        Some(first_child)
+                                    }
+                                }
+                                None => return false, // Node not found in DOM (should not happen unless the DOM is corrupted)
+                            };
+                            let first_child = match first_element_child {
+                                Some(fc) => fc,
+                                None => return false, // No element children
+                            };
+
+                            let mut nth_child = first_child;
+
+                            for _ in 1..n {
+                                if nth_child == node_id {
+                                    return false; // Return false if we reach the node before reaching the nth child
+                                }
+
+                                let Some(sibling) = next_element_sibling(nth_child, dom) else {
+                                    return false; // Not enough siblings to reach nth-child
+                                };
+                                nth_child = sibling;
+                            }
+
+                            if nth_child != node_id {
+                                return false; // Not the nth child
+                            }
+                        } else {
+                            return false; // Invalid argument for nth-child
+                        }
+                    }
+                    _ => return false, // Unsupported function
+                }
+            }
             Selector::Descendant => unreachable!("Descendants are handled by match_parts"),
         }
     }
     true
+}
+
+fn next_element_sibling(mut id: DomNodeId, dom: &Dom) -> Option<DomNodeId> {
+    while let Some(next) = dom.get_next_sibling(id) {
+        if dom.get_node(next).is_some_and(|n| n.is_element()) {
+            return Some(next);
+        }
+        id = next;
+    }
+    None
+}
+
+fn is_document_element(node_id: DomNodeId, dom: &Dom) -> bool {
+    let Some(node) = dom.get_node(node_id) else {
+        return false;
+    };
+    if !node.is_element() || node.get_tag() == Some(0) {
+        return false;
+    }
+    dom.get_parent(node_id)
+        .is_some_and(|parent| dom.get_tag(parent) == Some(0))
 }
 
 #[cfg(test)]
@@ -132,6 +226,8 @@ pub(super) mod tests {
         dom.ensure_tag_registered(DIV_TAG_INDEX);
         dom.ensure_tag_registered(P_TAG_INDEX);
 
+        let root_node = dom.add_element(0, None); // Root node with tag index 0
+
         let div_attrs = vec![make_attr("id", "main")].into_boxed_slice();
         let div_node = dom.add_element(DIV_TAG_INDEX, Some(div_attrs));
 
@@ -142,6 +238,16 @@ pub(super) mod tests {
             .expect("Failed to set parent");
         dom.set_first_child(div_node, Some(p_node))
             .expect("Failed to set first child");
+        dom.set_parent(div_node, root_node)
+            .expect("Failed to set parent");
+        dom.set_first_child(root_node, Some(div_node))
+            .expect("Failed to set first child");
+
+        let rule_root = get_first_rule(":root { font-size: 16px; }");
+        assert!(
+            matches_selector(div_node, &dom, &rule_root),
+            "Should match ':root' pseudo-class for root node"
+        );
 
         let rule_p = get_first_rule("p { color: red; }");
         assert!(
@@ -183,9 +289,9 @@ pub(super) mod tests {
     #[test]
     fn test_deep_descendant_matching() {
         let mut dom = Dom::new();
-        let div_tag = blink_dom::get_tag_index("div");
-        let section_tag = blink_dom::get_tag_index("section");
-        let p_tag = blink_dom::get_tag_index("p");
+        let div_tag = get_tag_index("div");
+        let section_tag = get_tag_index("section");
+        let p_tag = get_tag_index("p");
 
         // Hierarchy: <div id="main"> -> <section class="container"> -> <p class="card">
         let div_node = dom.add_element(
@@ -239,6 +345,25 @@ pub(super) mod tests {
             !matches_selector(p_node, &dom, &rule_fail),
             "Should fail if the ancestor tree exhausts without finding a 'nav'"
         );
+    }
+
+    #[test]
+    fn custom_elements_match_their_own_name_and_not_div() {
+        let mut dom = Dom::new();
+        let name = QualName::new(None, ns!(html), LocalName::from("my-card"));
+        let tag = dom.intern_custom_tag(name);
+        let node = dom.add_element(tag, None);
+
+        assert!(matches_selector(
+            node,
+            &dom,
+            &get_first_rule("my-card { margin: 0; }")
+        ));
+        assert!(!matches_selector(
+            node,
+            &dom,
+            &get_first_rule("div { margin: 0; }")
+        ));
     }
 
     #[test]

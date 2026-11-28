@@ -9,12 +9,12 @@
 //!     BLESS=1 cargo test -p blink_layout --test golden_layout
 
 use blink_css::{CSSStyleSheet, parse_css_into_stylesheet};
-use blink_dom::{Dom, get_tag_name};
+use blink_dom::Dom;
 use blink_html::parse_html;
 use blink_layout::layout::ConstraintSpace;
 use blink_layout::layout::LayoutContext;
 use blink_layout::layout::{FragmentArena, LayoutFragmentId};
-use blink_layout::style::StyleCache;
+use blink_layout::style::context::StyleContext;
 use std::env;
 use std::fmt::Write;
 use std::fs;
@@ -25,30 +25,38 @@ const VIEWPORT: (f32, f32) = (800.0, 600.0);
 
 fn layout_fixture(html: &str, css: &str) -> (Dom, FragmentArena) {
     let dom = parse_html(html);
+    let Some(virtual_root_id) = dom.root_node_id() else {
+        panic!("Document should have a root node");
+    };
 
     let mut stylesheet = CSSStyleSheet::new();
     parse_css_into_stylesheet(css, &mut stylesheet);
 
     let space = ConstraintSpace::from(VIEWPORT);
+
+    let mut prop_interner = blink_layout::style::custom_properties::PropInterner::new();
+    let custom_prop_table = blink_layout::style::custom_properties::CustomPropTable::build(
+        virtual_root_id,
+        &dom,
+        &stylesheet,
+        &mut prop_interner,
+    );
+    let ctx = StyleContext::new(&dom, &stylesheet, &custom_prop_table, &prop_interner);
+    let style_cache = ctx.compute_styles(virtual_root_id, Some(dom.nodes_len()));
     let mut ctx = LayoutContext {
         dom: &dom,
-        stylesheet: &stylesheet,
+        style_cache: &style_cache, // Initialize StyleCache with the number of nodes in the DOM
         text_measurer: &blink_layout::layout::FixedWidth {},
-        style_cache: StyleCache::new(dom.nodes_len()), // Initialize StyleCache with the number of nodes in the DOM
     };
 
-    let arena = ctx.build_layout_tree(dom.root_node_id(), space);
+    let arena = ctx.build_layout_tree(space);
 
     (dom, arena)
 }
 
 /// `div#app-root`, `span.nav-item`, `div.menu-link.active`, `p`, ...
 fn label(dom: &Dom, id: blink_dom::DomNodeId) -> String {
-    let mut s = dom
-        .get_tag(id)
-        .map(get_tag_name)
-        .unwrap_or("#text")
-        .to_string();
+    let mut s = dom.node_tag_name(id).unwrap_or("#text").to_string();
 
     if let Some(attrs) = dom.get_attributes(id) {
         for attr in attrs {

@@ -143,6 +143,23 @@ pub fn get_tag_name(tag: u8) -> &'static str {
     }
 }
 
+// The tag-index space is split in two:
+//
+//   0                              the document node
+//   1..=HTML_TAGS.len()            built-in HTML tags (see `get_tag_index`)
+//   FIRST_CUSTOM_TAG..=u8::MAX     names interned per `Dom` by `Dom::intern_custom_tag`
+//
+// Deriving the boundary from the table keeps the two ranges from colliding
+// when tags are added to `HTML_TAGS`.
+const _: () = assert!(HTML_TAGS.len() < u8::MAX as usize);
+
+/// First tag index handed out to elements whose name is not in `HTML_TAGS`.
+pub const FIRST_CUSTOM_TAG: u8 = (HTML_TAGS.len() + 1) as u8;
+
+/// How many distinct custom element names one `Dom` can hold. Names beyond
+/// this limit are treated as `div` rather than wrapping around onto another tag.
+pub const MAX_CUSTOM_TAGS: usize = u8::MAX as usize - FIRST_CUSTOM_TAG as usize + 1;
+
 #[derive(Debug)]
 pub struct CharacterDataTag;
 pub type CharacterDataId = SlotId<CharacterDataTag>;
@@ -158,7 +175,18 @@ pub struct Dom {
     attribute_store: SlotStore<Box<[Attribute]>, AttrTag>,
     character_data: SlotStore<String, CharacterDataTag>,
 
-    pub tag_registry: HashMap<u8, Box<QualName>>,
+    virtual_root: Option<DomNodeId>,
+
+    /// Qualified name for every tag index in use.
+    ///
+    /// Insert-only: entries are never removed or replaced, so the `Box`ed
+    /// names keep a stable address for the lifetime of the `Dom`. `blink_html`
+    /// relies on this to hand out `ExpandedName`s (see `HtmlDom::elem_name`).
+    /// The field is private, so nothing outside this module can break that.
+    tag_registry: HashMap<u8, Box<QualName>>,
+
+    /// Local name -> tag index for custom (non-`HTML_TAGS`) elements.
+    custom_tags: HashMap<markup5ever::LocalName, u8>,
 }
 
 struct IndexedNode<'a> {
@@ -288,7 +316,10 @@ impl fmt::Debug for DomNode {
 
 impl DomNode {
     pub fn is_element(&self) -> bool {
-        matches!(self.kind, NodeKind::Element { .. })
+        matches!(
+            self.kind,
+            NodeKind::Element { .. } | NodeKind::EmptyLeaf { .. }
+        )
     }
 
     pub fn is_text(&self) -> bool {
@@ -310,6 +341,9 @@ impl DomNode {
         }
     }
 
+    /// Name of a *built-in* tag. Custom elements report `"div"` here because a
+    /// bare node cannot see the `Dom`'s registry. Use [`Dom::node_tag_name`]
+    /// anywhere custom elements must be told apart (selector matching, UA defaults).
     pub fn get_tag_name(&self) -> Option<&str> {
         Some(get_tag_name(self.get_tag()?))
     }
@@ -329,11 +363,13 @@ impl Dom {
         Self {
             nodes: Vec::with_capacity(512),
             free_slots: Vec::with_capacity(128),
+            virtual_root: None,
             // attribute_table: Vec::with_capacity(512),
             // free_attrs: Vec::with_capacity(128),
             attribute_store: SlotStore::with_capacity(512),
             character_data: SlotStore::with_capacity(512),
             tag_registry: HashMap::new(),
+            custom_tags: HashMap::new(),
         }
     }
 
@@ -586,6 +622,19 @@ impl Dom {
         Ok(())
     }
 
+    pub fn set_virtual_root(&mut self, root: DomNodeId) -> Result<(), String> {
+        if self.virtual_root.is_some() {
+            return Err("Virtual root is already set".into());
+        }
+
+        if self.live(root).is_none() {
+            return Err("Provided root node is not valid".into());
+        }
+        self.virtual_root = Some(root);
+
+        Ok(())
+    }
+
     pub fn nodes_len(&self) -> usize {
         self.nodes.len()
     }
@@ -648,8 +697,28 @@ impl Dom {
         }
     }
 
-    pub fn root_node_id(&self) -> DomNodeId {
-        DomNodeId::new(0, 0).unwrap()
+    pub fn root_node_id(&self) -> Option<DomNodeId> {
+        self.virtual_root
+    }
+
+    pub fn is_document_node(&self, node_id: DomNodeId) -> bool {
+        self.virtual_root == Some(node_id)
+    }
+
+    pub fn document_element_id(&self) -> Option<DomNodeId> {
+        let root_id = self.virtual_root?;
+
+        let mut current_id = self.get_first_child(root_id)?;
+        loop {
+            if self
+                .get_node(current_id)
+                .is_some_and(|node| node.is_element())
+            {
+                return Some(current_id);
+            }
+
+            current_id = self.get_next_sibling(current_id)?;
+        }
     }
 
     pub fn ensure_tag_registered(&mut self, tag: u8) {
@@ -662,6 +731,55 @@ impl Dom {
                 markup5ever::LocalName::from(name_str),
             ))
         });
+    }
+
+    /// Returns the tag index for an element whose name is not in `HTML_TAGS`,
+    /// assigning a new one the first time a name is seen.
+    ///
+    /// Elements with the same local name share one index, so the number of
+    /// indices used grows with the number of distinct names, not elements. If
+    /// all [`MAX_CUSTOM_TAGS`] indices are taken, further new names fall back to
+    /// `div` instead of wrapping around onto an unrelated tag.
+    ///
+    /// Callers must not pick indices >= [`FIRST_CUSTOM_TAG`] by hand.
+    /// Entries are keyed by local name only; the namespace of the first element
+    /// seen with a given name is the one recorded.
+    pub fn intern_custom_tag(&mut self, name: QualName) -> u8 {
+        if let Some(&tag) = self.custom_tags.get(&name.local) {
+            return tag;
+        }
+
+        let next = FIRST_CUSTOM_TAG as usize + self.custom_tags.len();
+        let Ok(tag) = u8::try_from(next) else {
+            return get_tag_index("div");
+        };
+
+        self.custom_tags.insert(name.local.clone(), tag);
+        self.tag_registry
+            .entry(tag)
+            .or_insert_with(|| Box::new(name));
+        tag
+    }
+
+    /// The registered qualified name for `tag`, if one exists.
+    pub fn tag_qual_name(&self, tag: u8) -> Option<&QualName> {
+        self.tag_registry.get(&tag).map(|name| &**name)
+    }
+
+    /// Local name for a tag index, including custom elements.
+    pub fn tag_name(&self, tag: u8) -> &str {
+        if tag >= FIRST_CUSTOM_TAG
+            && let Some(name) = self.tag_registry.get(&tag)
+        {
+            return &name.local;
+        }
+        get_tag_name(tag)
+    }
+
+    /// Local name of an element node, including custom elements.
+    pub fn node_tag_name(&self, id: DomNodeId) -> Option<&str> {
+        let tag = self.get_tag(id)?;
+        Some(self.tag_name(tag))
     }
 }
 
@@ -935,5 +1053,68 @@ mod tests {
     #[test]
     fn option_id_is_four_bytes() {
         assert_eq!(size_of::<Option<DomNodeId>>(), 4);
+    }
+
+    fn custom_name(local: &str) -> QualName {
+        QualName::new(None, ns!(html), markup5ever::LocalName::from(local))
+    }
+
+    #[test]
+    fn custom_tags_do_not_overlap_builtin_range() {
+        assert!(FIRST_CUSTOM_TAG as usize > HTML_TAGS.len());
+        assert_eq!(get_tag_index("wbr") as usize, HTML_TAGS.len());
+    }
+
+    #[test]
+    fn custom_tags_are_interned_by_name() {
+        let mut dom = Dom::new();
+        let a = dom.intern_custom_tag(custom_name("my-card"));
+        let b = dom.intern_custom_tag(custom_name("my-card"));
+        let c = dom.intern_custom_tag(custom_name("my-list"));
+
+        assert_eq!(a, b, "same name must share a tag index");
+        assert_ne!(a, c);
+        assert!(a >= FIRST_CUSTOM_TAG && c >= FIRST_CUSTOM_TAG);
+        assert_eq!(dom.tag_name(a), "my-card");
+        assert_eq!(dom.tag_name(c), "my-list");
+        assert_eq!(dom.tag_qual_name(a).map(|q| &*q.local), Some("my-card"));
+    }
+
+    #[test]
+    fn node_tag_name_resolves_custom_and_builtin_elements() {
+        let mut dom = Dom::new();
+        let tag = dom.intern_custom_tag(custom_name("my-card"));
+        let custom = dom.add_element(tag, None);
+        let div = dom.add_element(get_tag_index("div"), None);
+
+        assert_eq!(dom.node_tag_name(custom), Some("my-card"));
+        assert_eq!(dom.node_tag_name(div), Some("div"));
+        // The bare-node accessor cannot see the registry.
+        assert_eq!(dom.get_node(custom).unwrap().get_tag_name(), Some("div"));
+    }
+
+    #[test]
+    fn custom_tag_overflow_falls_back_to_div_instead_of_wrapping() {
+        let mut dom = Dom::new();
+        let mut assigned = std::collections::HashSet::new();
+
+        let first = dom.intern_custom_tag(custom_name("x-0"));
+        assigned.insert(first);
+        for i in 1..MAX_CUSTOM_TAGS {
+            let tag = dom.intern_custom_tag(custom_name(&format!("x-{i}")));
+            assert!(tag >= FIRST_CUSTOM_TAG);
+            assert!(assigned.insert(tag), "tag index {tag} was handed out twice");
+        }
+        assert_eq!(assigned.len(), MAX_CUSTOM_TAGS);
+
+        // The range is full: new names degrade to `div`, they do not wrap.
+        assert_eq!(
+            dom.intern_custom_tag(custom_name("x-overflow")),
+            get_tag_index("div")
+        );
+
+        // Earlier names are untouched and still resolve.
+        assert_eq!(dom.tag_name(first), "x-0");
+        assert_eq!(dom.intern_custom_tag(custom_name("x-0")), first);
     }
 }
