@@ -45,8 +45,13 @@ fn main() {
         panic!("Document should have a root node");
     };
 
-    let custom_prop_table = CustomPropTable::new();
-    let prop_interner = PropInterner::new();
+    let mut prop_interner = PropInterner::new();
+    let custom_prop_table = CustomPropTable::build(
+        virtual_root_id,
+        &output_dom,
+        &stylesheet,
+        &mut prop_interner,
+    );
     let ctx = StyleContext::new(&output_dom, &stylesheet, &custom_prop_table, &prop_interner);
     let style_cache = ctx.compute_styles(virtual_root_id, Some(output_dom.nodes_len()));
 

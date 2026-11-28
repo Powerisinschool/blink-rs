@@ -34,8 +34,13 @@ fn layout_fixture(html: &str, css: &str) -> (Dom, FragmentArena) {
 
     let space = ConstraintSpace::from(VIEWPORT);
 
-    let custom_prop_table = blink_layout::style::custom_properties::CustomPropTable::new();
-    let prop_interner = blink_layout::style::custom_properties::PropInterner::new();
+    let mut prop_interner = blink_layout::style::custom_properties::PropInterner::new();
+    let custom_prop_table = blink_layout::style::custom_properties::CustomPropTable::build(
+        virtual_root_id,
+        &dom,
+        &stylesheet,
+        &mut prop_interner,
+    );
     let ctx = StyleContext::new(&dom, &stylesheet, &custom_prop_table, &prop_interner);
     let style_cache = ctx.compute_styles(virtual_root_id, Some(dom.nodes_len()));
     let mut ctx = LayoutContext {
