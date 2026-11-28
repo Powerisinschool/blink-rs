@@ -323,6 +323,65 @@ mod tests {
     }
 
     #[test]
+    fn resolves_repeated_var_reference() {
+        let mut dom = Dom::new();
+        let root = dom.add_element(0, None);
+
+        let child = dom.add_element(get_tag_index("div"), None);
+        dom.set_parent(child, root).unwrap();
+        dom.set_first_child(root, Some(child)).unwrap();
+
+        let mut stylesheet = CSSStyleSheet::new();
+        parse_css_into_stylesheet(
+            ":root { --a: red; --b: var(--a) var(--a); }",
+            &mut stylesheet,
+        );
+
+        let mut interner = PropInterner::new();
+        let table = CustomPropTable::build(root, &dom, &stylesheet, &mut interner);
+
+        let b_id = interner.get("--b").expect("--b interned");
+        assert_eq!(
+            table.lookup(child.slot(), b_id),
+            Some("red red"),
+            "repeated var() references must not trigger false cycle detection"
+        );
+    }
+
+    #[test]
+    fn resolves_given_fallback() {
+        let mut dom = Dom::new();
+        let root = dom.add_element(0, None);
+
+        let child = dom.add_element(get_tag_index("div"), None);
+        dom.set_parent(child, root).unwrap();
+        dom.set_first_child(root, Some(child)).unwrap();
+
+        let mut stylesheet = CSSStyleSheet::new();
+        parse_css_into_stylesheet(
+            ":root { --a: red; --b: var(--a, blue); --c: var(--nonexistent, green); }",
+            &mut stylesheet,
+        );
+
+        let mut interner = PropInterner::new();
+        let table = CustomPropTable::build(root, &dom, &stylesheet, &mut interner);
+
+        let b_id = interner.get("--b").expect("--b interned");
+        assert_eq!(
+            table.lookup(child.slot(), b_id),
+            Some("red"),
+            "var() with a fallback should resolve to the primary value"
+        );
+
+        let c_id = interner.get("--c").expect("--c interned");
+        assert_eq!(
+            table.lookup(child.slot(), c_id),
+            Some("green"),
+            "var() with a fallback should resolve to the fallback value when the primary is missing"
+        );
+    }
+
+    #[test]
     fn computes_styles_for_descendants_of_display_none() {
         let mut dom = Dom::new();
 

@@ -2,7 +2,7 @@ use super::types::{
     BorderSide, BorderStyle, Color, ComputedStyle, Display, EdgeSizes, SpecifiedColor,
 };
 use crate::style::context::StyleContext;
-use crate::style::custom_properties::resolve_var_in_property;
+use crate::style::custom_properties::resolve_var_parts;
 use blink_css::CSSStyleRule;
 
 pub(super) fn cascade_properties(
@@ -25,7 +25,15 @@ pub(super) fn cascade_properties(
 
         for declaration in props {
             let name = declaration.name.as_str();
-            let value = declaration.value.as_str();
+
+            let Some(value) = resolve_var_parts(
+                &declaration.value,
+                node_id,
+                ctx.custom_prop_table,
+                ctx.prop_interner,
+            ) else {
+                continue; // Skip if the value cannot be resolved
+            };
 
             match value.trim() {
                 "inherit" => {
@@ -38,13 +46,6 @@ pub(super) fn cascade_properties(
                 }
                 _ => {}
             }
-
-            let value = if value.contains("var(") {
-                resolve_var_in_property(value, node_id, ctx.custom_prop_table, ctx.prop_interner)
-                    .to_string()
-            } else {
-                value.to_string()
-            };
 
             let value = value.as_str();
 

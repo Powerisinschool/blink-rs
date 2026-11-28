@@ -1,7 +1,6 @@
 use crate::style::matching;
-use blink_css::CSSStyleSheet;
+use blink_css::{CSSStyleSheet, ValuePart};
 use blink_dom::{Dom, DomNodeId};
-use std::borrow::Cow;
 use std::collections::HashMap;
 use string_interner::StringInterner;
 use string_interner::backend::StringBackend;
@@ -66,6 +65,7 @@ impl CustomProperty {
 }
 
 /// Entries in each block should be sorted by PropId for binary search functionality.
+/// Upon review, a linear search often proves faster than a binary search for small arrays.
 pub struct CustomPropTable {
     pub(crate) parent: Vec<u32>,
     pub(crate) props: Vec<Option<Box<[CustomProperty]>>>,
@@ -104,7 +104,7 @@ impl CustomPropTable {
             let slot = node_id.slot();
             table.parent[slot] = parent_slot as u32;
 
-            let mut local_props: HashMap<PropId, &str> = HashMap::new();
+            let mut local_props: HashMap<PropId, &[ValuePart]> = HashMap::new();
             let mut rules = matching::get_matching_rules(node_id, dom, stylesheet);
             rules.sort_by_key(|k| k.specificity());
 
@@ -120,7 +120,7 @@ impl CustomPropTable {
                     // Later declarations in the cascade overwrite earlier ones.
                     // (Since we're sorting matched `rules` by specificity,
                     // this HashMap insert naturally handles the cascade).
-                    local_props.insert(id, decl.value.as_str());
+                    local_props.insert(id, decl.value.as_ref());
                 }
             }
 
@@ -134,7 +134,7 @@ impl CustomPropTable {
                     visited.push(*id);
                     let resolved = resolve_custom_property_value(
                         raw_value,
-                        &local_props,
+                        Some(&local_props),
                         &table,
                         slot,
                         interner,
@@ -196,102 +196,87 @@ impl CustomPropTable {
 /// TODO: Implement `var(--a, fallback)`
 /// This will mean refactoring from the current naive approach 😭
 fn resolve_custom_property_value(
-    raw_value: &str,
-    local_props: &HashMap<PropId, &str>,
+    raw_value: &[ValuePart],
+    local_props: Option<&HashMap<PropId, &[ValuePart]>>,
     table: &CustomPropTable,
     current_slot: usize,
     interner: &PropInterner,
     visited: &mut Vec<PropId>,
 ) -> Option<String> {
-    if !raw_value.contains("var(") {
-        return Some(raw_value.trim().to_string());
-    }
-
     let mut result = String::with_capacity(raw_value.len());
-    let mut rest = raw_value;
 
-    while let Some(start) = rest.find("var(") {
-        result.push_str(&rest[..start]);
+    for value in raw_value {
+        match value {
+            ValuePart::Var { name, fallback } => {
+                let Some(id) = interner.get(name) else {
+                    if let Some(fb) = fallback {
+                        result.push_str(&resolve_custom_property_value(
+                            fb,
+                            local_props,
+                            table,
+                            current_slot,
+                            interner,
+                            visited,
+                        )?);
+                        continue;
+                    }
+                    return None; // no fallback and unknown variable
+                };
 
-        let after_start = &rest[start + 4..];
-        let Some(end) = after_start.find(')') else {
-            // Malformed var() - missing closing paren
-            return None;
-        };
+                if visited.contains(&id) {
+                    return None; // cycle
+                }
 
-        let var_name = after_start[..end].trim();
-        let id = interner.get(var_name)?;
+                visited.push(id);
 
-        let value = if let Some(local_val) = local_props.get(&id) {
-            if visited.contains(&id) {
-                return None; // cycle
+                let resolved = if let Some(local_val) = local_props.and_then(|p| p.get(&id)) {
+                    resolve_custom_property_value(
+                        local_val,
+                        local_props,
+                        table,
+                        current_slot,
+                        interner,
+                        visited,
+                    )
+                } else if let Some(v) = table.lookup(current_slot, id) {
+                    Some(v.to_string())
+                } else if let Some(fb) = fallback {
+                    resolve_custom_property_value(
+                        fb,
+                        local_props,
+                        table,
+                        current_slot,
+                        interner,
+                        visited,
+                    )
+                } else {
+                    None // no fallback and unknown variable
+                };
+
+                visited.pop();
+                result.push_str(&resolved?);
             }
-            visited.push(id);
-            let resolved = resolve_custom_property_value(
-                local_val,
-                local_props,
-                table,
-                current_slot,
-                interner,
-                visited,
-            );
-            visited.pop();
-            resolved
-        } else {
-            table.lookup(current_slot, id).map(|s| s.to_string())
-        };
-
-        let v = value?;
-        result.push_str(&v);
-
-        rest = &after_start[end + 1..];
+            _ => result.push_str(&value.to_string()),
+        }
     }
 
-    result.push_str(rest);
     Some(result)
 }
 
-pub fn resolve_var_in_property<'a>(
-    value: &'a str,
+pub fn resolve_var_parts(
+    parts: &[ValuePart],
     node_slot: usize,
     table: &CustomPropTable,
     interner: &PropInterner,
-) -> Cow<'a, str> {
-    if !value.contains("var(") {
-        return Cow::Borrowed(value);
-    }
-
-    let mut result = String::with_capacity(value.len());
-    let mut rest = value;
-
-    while let Some(start) = rest.find("var(") {
-        result.push_str(&rest[..start]);
-
-        let after_start = &rest[start + 4..];
-        // Naive: first ')' wins. Punt on fallbacks `var(--a, red)` for now.
-        let Some(end) = after_start.find(')') else {
-            return Cow::Borrowed(value); // Malformed
-        };
-
-        let var_name = after_start[..end].trim();
-
-        let Some(id) = interner.get(var_name) else {
-            return Cow::Borrowed(value); // Unknown variable
-        };
-
-        match table.lookup(node_slot, id) {
-            Some(resolved) => result.push_str(resolved),
-            None => {
-                // Property is invalid at computed-value time.
-                // Returning the original means parse_px_value() will fail
-                // and the declaration will be skipped by the cascade.
-                return Cow::Borrowed(value);
-            }
+) -> Option<String> {
+    if !parts.iter().any(|p| matches!(p, ValuePart::Var { .. })) {
+        let mut s = String::new();
+        for p in parts {
+            s.push_str(&p.to_string());
         }
-
-        rest = &after_start[end + 1..];
+        return Some(s);
     }
 
-    result.push_str(rest);
-    Cow::Owned(result)
+    let mut visited = vec![];
+    resolve_custom_property_value(parts, None, table, node_slot, interner, &mut visited)
 }

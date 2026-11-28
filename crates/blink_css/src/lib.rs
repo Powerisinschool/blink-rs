@@ -1,4 +1,5 @@
 use cssparser::{ParseError, Parser, Token};
+use std::fmt::Formatter;
 
 #[derive(Debug, Clone)]
 pub struct Declaration {
@@ -346,11 +347,11 @@ pub enum ValuePart {
     Literal(String),
     Var {
         name: String,
-        fallback: Option<Vec<ValuePart>>,
+        fallback: Option<Box<[ValuePart]>>,
     },
     Function {
         name: String,
-        args: Option<Vec<ValuePart>>,
+        args: Option<Box<[ValuePart]>>,
     },
 }
 
@@ -362,6 +363,36 @@ impl ValuePart {
             [ValuePart::Literal(s)] => Some(s),
             [] => Some(""),
             _ => None,
+        }
+    }
+}
+
+impl std::fmt::Display for ValuePart {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ValuePart::Var { name, fallback } => {
+                write!(f, "var({}", name)?;
+                if let Some(fallback) = fallback {
+                    write!(
+                        f,
+                        ", {}",
+                        fallback.iter().map(|p| p.to_string()).collect::<String>()
+                    )?;
+                }
+                f.write_str(")")
+            }
+            ValuePart::Function { name, args } => {
+                f.write_str(name)?;
+                if let Some(args) = args {
+                    write!(
+                        f,
+                        "{}",
+                        args.iter().map(|p| p.to_string()).collect::<String>()
+                    )?;
+                }
+                f.write_str(")")
+            }
+            ValuePart::Literal(s) => f.write_str(s),
         }
     }
 }
@@ -381,7 +412,7 @@ fn parse_property_value(
                     let fallback = if n.try_parse(|n| n.expect_comma()).is_ok() {
                         let mut fb = vec![];
                         parse_property_value(n, &mut fb)?;
-                        Some(fb)
+                        Some(fb.into_boxed_slice())
                     } else {
                         n.expect_exhausted()?;
                         None
@@ -394,7 +425,7 @@ fn parse_property_value(
                 let args = parser.parse_nested_block(|n| {
                     let mut args = vec![];
                     parse_property_value(n, &mut args)?;
-                    Ok(args)
+                    Ok(args.into_boxed_slice())
                 })?;
                 parts.push(ValuePart::Function {
                     name,
