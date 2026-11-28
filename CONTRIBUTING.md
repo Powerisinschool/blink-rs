@@ -6,7 +6,8 @@ Thanks for your interest. blink-rs is a pre-alpha engine: the architecture is st
 
 In scope: the DOM, style cascade, layout, fragment tree, and the glue needed to render them.
 
-Out of scope for now: a JavaScript runtime (Phase 3), networking, and re-implementing components we reuse (such as `html5ever`).
+Out of scope for now: a JavaScript runtime (Phase 4), networking, and re-implementing components we reuse (such as
+`html5ever`).
 
 ## Getting started
 
@@ -18,8 +19,6 @@ cargo test --workspace
 # Writes output.png from assets/test.html + test.css
 cargo run -p blink_shell
 ```
-
-[//]: # (Both DOM storage layouts &#40;default and `dense-core`&#41; must pass the tests. CI runs both.)
 
 ## Before you open a PR
 
@@ -42,8 +41,9 @@ Please keep these in mind when changing code:
 ## Tests
 
 - Every bug fix needs a regression test that fails without the fix.
-- Layout changes should add or update an expected-rectangle test for the affected fixture in `assets/`. A page that renders "about right" is not a test.
-- DOM changes should work under both feature flags.
+- Layout changes should add or update an expected-rectangle test for the affected fixture in
+  `crates/blink_layout/tests/fixtures/`. Regenerate with `BLESS=1 cargo test -p blink_layout --test golden_layout` and
+  review the diff. A page that renders "about right" is not a test.
 
 ## Pull requests
 
@@ -56,14 +56,16 @@ Please keep these in mind when changing code:
 
 These are real gaps in the current implementation:
 
-- **Merge adjacent text nodes** in `blink_html`. The parser emits several `Text` nodes for one run of text.
-- **Unknown tag names.** `get_tag_index` returns `0` for unknown tags, which is the index for `document`. Custom elements and SVG tags should get a distinct representation.
-- **Line wrapping** for inline children in `blink_layout::engine`.
+- **SVG and MathML elements.** Tags are keyed by local name only, so an SVG `<title>` or `<a>` is stored as the HTML tag
+  of the same name and reports the HTML namespace to `html5ever`. Track the namespace per element.
+- **Custom properties.** `blink_shell` and the golden-test harness pass an empty `CustomPropTable`, so `var()` never
+  resolves outside unit tests. Build the table where styles are computed, and add the `var(--a, fallback)` form.
 - **Shrink-wrap width** for auto-width inline boxes that contain block children.
 - **Golden layout test** for `assets/test.html`, asserting each fragment's rectangle.
-- **Warn on unsupported `display` values** instead of silently treating them as `inline`.
+- **Warn on unsupported `display` values.** The declaration is currently dropped without any message.
 - **More selectors:** child combinator (`>`), universal selector, attribute selectors.
-- **Property inheritance** for inheritable properties once more properties exist.
+- **Implicit property inheritance** for inheritable properties, once `color` and font properties exist. Only the
+  explicit `inherit` keyword works today.
 
 ## Provenance and licensing
 
