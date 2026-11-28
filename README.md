@@ -156,9 +156,8 @@ Known gaps, many of which are good places to start contributing (see [CONTRIBUTI
   exist.
 - No child, sibling or attribute selectors, no pseudo-classes other than `:root` and `:nth-child(<integer>)`, no
   `!important`.
-- `var()` resolves against a `CustomPropTable` that the caller must build with `CustomPropTable::build`; `blink_shell`
-  currently passes an empty table, so custom properties are not applied there. The fallback form `var(--a, red)` is not
-  supported.
+- `var()` resolves against a `CustomPropTable` that the caller must build with `CustomPropTable::build`. The engine does
+  not yet support `@property` or `@custom-media`.
 
 ---
 
